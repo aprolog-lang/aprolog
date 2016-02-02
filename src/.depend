@@ -1,0 +1,160 @@
+flags.cmi :
+util.cmi :
+monad.cmi :
+printer.cmi :
+pos.cmi : printer.cmi
+var.cmi : printer.cmi
+unique.cmi : printer.cmi
+trie.cmi :
+varmap.cmi : var.cmi printer.cmi
+varset.cmi : var.cmi printer.cmi
+types.cmi : var.cmi nstbl.cmi
+fixity.cmi :
+nstbl.cmi : printer.cmi
+absyn.cmi : varset.cmi varmap.cmi types.cmi printer.cmi pos.cmi perm.cmi \
+    nstbl.cmi isym.cmi internal.cmi fixity.cmi
+lineno.cmi :
+parser.cmi : nstbl.cmi absyn.cmi
+perm.cmi : util.cmi types.cmi printer.cmi
+internal.cmi : varset.cmi util.cmi unique.cmi types.cmi printer.cmi perm.cmi \
+    isym.cmi
+isym.cmi : unique.cmi printer.cmi
+termgraph.cmi : types.cmi printer.cmi
+tcenv.cmi : varset.cmi varmap.cmi unique.cmi types.cmi printer.cmi nstbl.cmi \
+    absyn.cmi
+translate.cmi : tcenv.cmi isym.cmi internal.cmi absyn.cmi
+index.cmi : isym.cmi internal.cmi
+subst.cmi : types.cmi printer.cmi internal.cmi
+eval.cmi : subst.cmi internal.cmi
+explain.cmi : types.cmi subst.cmi printer.cmi perm.cmi internal.cmi
+unify.cmi : util.cmi types.cmi tcenv.cmi subst.cmi printer.cmi perm.cmi \
+    isym.cmi internal.cmi
+negelim.cmi : tcenv.cmi absyn.cmi
+tc.cmi : var.cmi tcenv.cmi monad.cmi absyn.cmi
+runtime.cmi : unique.cmi isym.cmi internal.cmi absyn.cmi
+solve.cmi : unify.cmi types.cmi printer.cmi isym.cmi internal.cmi index.cmi
+boundsolve.cmi : unify.cmi types.cmi tcenv.cmi printer.cmi isym.cmi \
+    internal.cmi index.cmi
+check.cmi : unify.cmi types.cmi tcenv.cmi solve.cmi printer.cmi isym.cmi \
+    internal.cmi index.cmi
+flags.cmo : flags.cmi
+flags.cmx : flags.cmi
+config.cmo :
+config.cmx :
+util.cmo : flags.cmi util.cmi
+util.cmx : flags.cmx util.cmi
+monad.cmo : util.cmi monad.cmi
+monad.cmx : util.cmx monad.cmi
+printer.cmo : printer.cmi
+printer.cmx : printer.cmi
+pos.cmo : printer.cmi pos.cmi
+pos.cmx : printer.cmx pos.cmi
+var.cmo : printer.cmi var.cmi
+var.cmx : printer.cmx var.cmi
+unique.cmo : printer.cmi unique.cmi
+unique.cmx : printer.cmx unique.cmi
+trie.cmo : trie.cmi
+trie.cmx : trie.cmi
+varmap.cmo : var.cmi printer.cmi varmap.cmi
+varmap.cmx : var.cmx printer.cmx varmap.cmi
+varset.cmo : var.cmi printer.cmi varset.cmi
+varset.cmx : var.cmx printer.cmx varset.cmi
+types.cmo : var.cmi nstbl.cmi types.cmi
+types.cmx : var.cmx nstbl.cmx types.cmi
+fixity.cmo : fixity.cmi
+fixity.cmx : fixity.cmi
+nstbl.cmo : util.cmi printer.cmi nstbl.cmi
+nstbl.cmx : util.cmx printer.cmx nstbl.cmi
+absyn.cmo : varset.cmi varmap.cmi var.cmi util.cmi types.cmi printer.cmi \
+    pos.cmi nstbl.cmi isym.cmi internal.cmi fixity.cmi absyn.cmi
+absyn.cmx : varset.cmx varmap.cmx var.cmx util.cmx types.cmx printer.cmx \
+    pos.cmx nstbl.cmx isym.cmx internal.cmx fixity.cmx absyn.cmi
+lineno.cmo : util.cmi lineno.cmi
+lineno.cmx : util.cmx lineno.cmi
+lexer.cmo : util.cmi parser.cmi nstbl.cmi lineno.cmi fixity.cmi
+lexer.cmx : util.cmx parser.cmx nstbl.cmx lineno.cmx fixity.cmx
+parser.cmo : var.cmi util.cmi types.cmi pos.cmi nstbl.cmi lineno.cmi \
+    fixity.cmi absyn.cmi parser.cmi
+parser.cmx : var.cmx util.cmx types.cmx pos.cmx nstbl.cmx lineno.cmx \
+    fixity.cmx absyn.cmx parser.cmi
+perm.cmo : var.cmi types.cmi printer.cmi perm.cmi
+perm.cmx : var.cmx types.cmx printer.cmx perm.cmi
+internal.cmo : varset.cmi var.cmi util.cmi types.cmi printer.cmi perm.cmi \
+    nstbl.cmi isym.cmi flags.cmi internal.cmi
+internal.cmx : varset.cmx var.cmx util.cmx types.cmx printer.cmx perm.cmx \
+    nstbl.cmx isym.cmx flags.cmx internal.cmi
+isym.cmo : unique.cmi printer.cmi isym.cmi
+isym.cmx : unique.cmx printer.cmx isym.cmi
+termgraph.cmo : var.cmi types.cmi printer.cmi termgraph.cmi
+termgraph.cmx : var.cmx types.cmx printer.cmx termgraph.cmi
+tcenv.cmo : varset.cmi varmap.cmi unique.cmi types.cmi printer.cmi nstbl.cmi \
+    absyn.cmi tcenv.cmi
+tcenv.cmx : varset.cmx varmap.cmx unique.cmx types.cmx printer.cmx nstbl.cmx \
+    absyn.cmx tcenv.cmi
+translate.cmo : varset.cmi var.cmi util.cmi types.cmi tcenv.cmi perm.cmi \
+    nstbl.cmi isym.cmi internal.cmi flags.cmi absyn.cmi translate.cmi
+translate.cmx : varset.cmx var.cmx util.cmx types.cmx tcenv.cmx perm.cmx \
+    nstbl.cmx isym.cmx internal.cmx flags.cmx absyn.cmx translate.cmi
+index.cmo : unique.cmi types.cmi internal.cmi index.cmi
+index.cmx : unique.cmx types.cmx internal.cmx index.cmi
+subst.cmo : varmap.cmi var.cmi util.cmi types.cmi printer.cmi perm.cmi \
+    internal.cmi subst.cmi
+subst.cmx : varmap.cmx var.cmx util.cmx types.cmx printer.cmx perm.cmx \
+    internal.cmx subst.cmi
+eval.cmo : util.cmi subst.cmi internal.cmi eval.cmi
+eval.cmx : util.cmx subst.cmx internal.cmx eval.cmi
+explain.cmo : var.cmi util.cmi types.cmi subst.cmi printer.cmi perm.cmi \
+    internal.cmi explain.cmi
+explain.cmx : var.cmx util.cmx types.cmx subst.cmx printer.cmx perm.cmx \
+    internal.cmx explain.cmi
+unify.cmo : var.cmi util.cmi types.cmi translate.cmi subst.cmi printer.cmi \
+    perm.cmi isym.cmi internal.cmi flags.cmi absyn.cmi unify.cmi
+unify.cmx : var.cmx util.cmx types.cmx translate.cmx subst.cmx printer.cmx \
+    perm.cmx isym.cmx internal.cmx flags.cmx absyn.cmx unify.cmi
+negelim.cmo : varset.cmi var.cmi util.cmi types.cmi tcenv.cmi nstbl.cmi \
+    internal.cmi flags.cmi absyn.cmi negelim.cmi
+negelim.cmx : varset.cmx var.cmx util.cmx types.cmx tcenv.cmx nstbl.cmx \
+    internal.cmx flags.cmx absyn.cmx negelim.cmi
+tc.cmo : varset.cmi varmap.cmi var.cmi util.cmi types.cmi translate.cmi \
+    tcenv.cmi subst.cmi printer.cmi nstbl.cmi monad.cmi isym.cmi flags.cmi \
+    explain.cmi absyn.cmi tc.cmi
+tc.cmx : varset.cmx varmap.cmx var.cmx util.cmx types.cmx translate.cmx \
+    tcenv.cmx subst.cmx printer.cmx nstbl.cmx monad.cmx isym.cmx flags.cmx \
+    explain.cmx absyn.cmx tc.cmi
+runtime.cmo : var.cmi util.cmi types.cmi printer.cmi perm.cmi nstbl.cmi \
+    isym.cmi internal.cmi fixity.cmi absyn.cmi runtime.cmi
+runtime.cmx : var.cmx util.cmx types.cmx printer.cmx perm.cmx nstbl.cmx \
+    isym.cmx internal.cmx fixity.cmx absyn.cmx runtime.cmi
+solve.cmo : varset.cmi var.cmi util.cmi unify.cmi types.cmi subst.cmi \
+    runtime.cmi printer.cmi perm.cmi isym.cmi internal.cmi index.cmi eval.cmi \
+    solve.cmi
+solve.cmx : varset.cmx var.cmx util.cmx unify.cmx types.cmx subst.cmx \
+    runtime.cmx printer.cmx perm.cmx isym.cmx internal.cmx index.cmx eval.cmx \
+    solve.cmi
+boundsolve.cmo : varset.cmi var.cmi util.cmi unify.cmi types.cmi tcenv.cmi \
+    subst.cmi runtime.cmi printer.cmi perm.cmi nstbl.cmi isym.cmi \
+    internal.cmi index.cmi eval.cmi absyn.cmi boundsolve.cmi
+boundsolve.cmx : varset.cmx var.cmx util.cmx unify.cmx types.cmx tcenv.cmx \
+    subst.cmx runtime.cmx printer.cmx perm.cmx nstbl.cmx isym.cmx \
+    internal.cmx index.cmx eval.cmx absyn.cmx boundsolve.cmi
+check.cmo : varset.cmi var.cmi util.cmi unify.cmi types.cmi subst.cmi \
+    solve.cmi perm.cmi isym.cmi internal.cmi flags.cmi boundsolve.cmi \
+    check.cmi
+check.cmx : varset.cmx var.cmx util.cmx unify.cmx types.cmx subst.cmx \
+    solve.cmx perm.cmx isym.cmx internal.cmx flags.cmx boundsolve.cmx \
+    check.cmi
+parser.cmo : var.cmi util.cmi types.cmi pos.cmi nstbl.cmi lineno.cmi \
+    fixity.cmi absyn.cmi parser.cmi
+parser.cmx : var.cmx util.cmx types.cmx pos.cmx nstbl.cmx lineno.cmx \
+    fixity.cmx absyn.cmx parser.cmi
+parser.cmi : nstbl.cmi absyn.cmi
+lexer.cmo : util.cmi parser.cmi nstbl.cmi lineno.cmi fixity.cmi
+lexer.cmx : util.cmx parser.cmx nstbl.cmx lineno.cmx fixity.cmx
+main.cmo : varset.cmi varmap.cmi var.cmi util.cmi unify.cmi types.cmi \
+    translate.cmi tcenv.cmi tc.cmi solve.cmi runtime.cmi printer.cmi pos.cmi \
+    perm.cmi parser.cmi nstbl.cmi negelim.cmi monad.cmi lineno.cmi lexer.cmo \
+    isym.cmi internal.cmi index.cmi flags.cmi config.cmo check.cmi absyn.cmi
+main.cmx : varset.cmx varmap.cmx var.cmx util.cmx unify.cmx types.cmx \
+    translate.cmx tcenv.cmx tc.cmx solve.cmx runtime.cmx printer.cmx pos.cmx \
+    perm.cmx parser.cmx nstbl.cmx negelim.cmx monad.cmx lineno.cmx lexer.cmx \
+    isym.cmx internal.cmx index.cmx flags.cmx config.cmx check.cmx absyn.cmx
