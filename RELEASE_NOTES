@@ -1,0 +1,80 @@
+AlphaProlog 0.4 
+---------------
+
+What is AlphaProlog?  
+--------------------
+
+AlphaProlog is a logic programming language with built-in names, fresh
+name generation, name binding, and unification up to alpha-equivalence
+(that is, consistent renaming of bound names.) Though still in
+development, its ultimate aim is to provide a better way of both writing
+and reasoning about programs that rely heavily on names and binding, such
+as compilers, interpreters, and theorem provers.  AlphaProlog supports a
+new, declarative (stateless) approach to programming with names, based on
+the FM formalism developed by Gabbay and Pitts and used in the FreshML
+programming language, and, more directly, on Pitts' nominal logic and
+Urban, Pitts, and Gabbay's nominal unification algorithm.
+
+Languages like Twelf, Qu-Prolog, and LambdaProlog also support encoding
+names and binding using built-in meta-level variables and bindings.
+However, these languages are semantically much richer and more complex
+than AlphaProlog, which is essentially first-order.  Also, while these
+languages are considerably more mature and provide some features which
+AlphaProlog lacks, there are some kinds of programs which are difficult to
+express using higher-order encodings but easy to express in AlphaProlog.
+Examples include computations involving open terms, fresh name generation,
+or varying numbers of bound variables, such as simultaneous substitution,
+unification, and closure conversion.
+
+Features 
+--------
+
+AlphaProlog has the following features shared by other logic and
+functional programming languages:
+
+    * Built-in basic types like integers, lists, and strings 
+    * Definite clause grammars 
+    * Static typechecking and polymorphic types/data structures
+
+In addition, AlphaProlog has several new features for programming with
+names and binding (nameful programming):
+
+    * Names are concrete data inhabiting name types.  
+    * Names can be bound within terms using an abstraction construction 
+      inhabiting abstraction types (distinct from function types).
+    * Names can be swapped with each other, and though there is no
+      built-in notion of substitution of terms for names, capture-avoiding
+      substitution can be defined.
+    * Term equality and unification are modulo alpha-equivalence (that is,
+      capture-avoiding renaming of bound names).
+    * Fresh names are generated automatically as needed during execution,
+      instead of explicitly (and imperatively) by the programmer.
+    * Freshness is an explicit built-in predicate that can hold between
+      a name and a term
+
+As of version 0.4, AlphaProlog also supports automatic search for
+counterexamples ("mechanized metatheory model-checking").
+
+
+Where can I get AlphaProlog?  
+----------------------------
+
+A source distribution as well as more information about AlphaProlog,
+including examples and (draft) documentation, is available at
+
+http://www.cs.cornell.edu/People/jcheney/aprolog/
+
+
+Related Information 
+-------------------
+
+More information about FM, nominal logic/unification, and FreshML can
+be found at:
+
+http://www.freshml.org/
+
+More information about Twelf, LambdaProlog, and Qu-Prolog can be found at:
+
+http://www.cs.cmu.edu/~twelf 
+http://www.cse.psu.edu/~dale/lProlog
+http://www.itee.uq.edu.au/~pjr/HomePages/QuPrologHome.html

@@ -1,0 +1,43 @@
+2016-02-01 James Cheney <jcheney@inf.ed.ac.uk>
+
+	* added specification checking (thanks to Alberto Momigliano, Matteo Pessina)
+
+2006-09-13 James Cheney <jcheney@inf.ed.ac.uk>
+     	
+	* absyn.ml (term): Added Conc
+	(decl): Added CheckDirective
+
+	* flags.ml (new_goal_only:bool): Added
+	(forbid_prop:bool): Added
+	(forbid_higher_order:bool): Added
+	(restrict_name_type:bool): Added
+	(do_checks:bool): Added
+	(strict_new_occurs): Removed
+	(fast_search): Removed
+	(new_solve): Removed
+
+	* internal.ml (test,hyp): Added type for tests and hypotheses
+
+	* lexer.mll (lex): Added syntax for #check
+	(char): Made more characters legal in string literals
+	(lex): Added concretion
+	
+	* main.ml (simplify_fvs): Got rid of ev_constrs
+	(run1): Added support for CheckDirective
+
+	* runtime.ml: Added prop_ty_decl, call, other "higher-order" 
+	builtins, converters between names and strings, mk_abs and split_abs
+
+	* solve.ml: got rid of evconstrs
+
+	* subst.ml: bug in apply_s
+
+	* tc.ml: Support for extra flags, conc
+
+	* translate.ml: Support for concretion
+
+	* unify.ml: removed ev unification
+
+2006-09-14 James Cheney <jcheney@inf.ed.ac.uk>
+
+	* parser.mly, lexer.mll: added support for id :: ty style declarations.

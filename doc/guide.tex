@@ -1,0 +1,1322 @@
+\documentclass[draft,12pt]{report}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{proof}
+\usepackage{xspace}
+\usepackage{stmaryrd}
+\setlength{\textheight}{9in}
+\setlength{\textwidth}{6in}
+\setlength{\topmargin}{0in}
+\setlength{\oddsidemargin}{0.25in}
+\setlength{\headheight}{0in}
+\setlength{\headsep}{0in}
+\newcommand{\quot}[1]{``#1''}
+\newcommand{\aprolog}{$\alpha${Prolog}\xspace}
+\newcommand{\fresh}{\mathrel\#}
+\newcommand{\new}{\reflectbox{\sf N}}
+\newcommand{\ent}{\mathrel{{:}{-}}}
+\newcommand{\abs}{\backslash}
+\newcommand{\andd}{\wedge}
+\newcommand{\orr}{\vee}
+\newcommand{\impp}{\Rightarrow}
+\usepackage{ttquot}
+\usepackage{underscore}
+\newcommand{\conc}{\mathop{@}}
+\newcommand{\SB}[1]{\llbracket #1 \rrbracket}
+
+\begin{document}
+
+
+\title{\aprolog\ User's Guide \& Language Reference\\
+  Version 0.4\\
+  DRAFT} \author{James Cheney}
+
+\maketitle
+\tableofcontents
+
+\chapter{Introduction}
+
+\section{What \aprolog\ Is For}
+Names, binding, and scope are perennial problems in many programming
+tasks, including implementing compilers and interpreters as well as
+symbolic mathematical tools and theorem proving systems.  Few
+languages provide any assistance for programming with names, so
+programmers must reinvent the wheel every time a new system which
+makes use of names is built.  This is often a tedious and error-prone
+process; also, the resulting programs tend to be more difficult to
+read and analyze.  Programming language support for key data
+structures is crucial to writing clear, optimizable code in
+traditional domains such as matrix computations (via arrays),
+databases (via records), large-scale interactive systems (via
+objects), and algebraic symbolic computation (via ML-style algebraic
+datatypes or Prolog-style terms): these features have been standard in
+high-level programming languages for decades.  The purpose of
+\aprolog\ is to provide the same kind of built-in support for names in
+a practical logic programming language.
+
+\section{Background}
+
+\aprolog\ is a logic programming language with a built-in notion of
+names, name binding, and equivalence up to renaming.  \aprolog\ is
+based on a logical theory of names and binding called nominal logic,
+that has its own semantics independent of logic programming.  In this
+logic, it is possible to define relations that express precisely what
+we intuitively mean when we write programs that manipulate names,
+without giving up on determinism and ease of reasoning about programs.
+The clauses and goals allowed in \aprolog\ are a simple subset of this
+logic, corresponding to Horn clauses and goals extended with a few
+additional operators.  These operators include a \emph{freshness}
+predicate $a \fresh t$, which checks that a name $a$ does not occur in
+a term $t$, and a \emph{new-quantifier} $\new a. \phi$, which
+expresses that $a$ is a new name in $\phi$ (that is, $a$ only appears
+in $\phi$ where it is explicitly mentioned; it cannot be ``hidden'' in
+any of $\phi$'s free variables).
+
+\aprolog\ also has a non-standard view of equality and unification.
+Terms in \aprolog\ include a variable-binding operator $a\backslash
+t$, which expresses that the name $a$ is bound (or abstracted) in term
+$t$.  This is not $\lambda$-abstraction; that is, the resulting term
+is not a function.  Instead, however, terms are considered equal if
+corresponding abstractions can be renamed to be syntactically equal
+(without capturing any other variables).  Thus, $a \backslash (a,b) =
+c \backslash (c,b)$ is true in \aprolog; in fact, there is no way to
+distinguish the terms; on the other hand, $a \backslash (a,b) = b
+\backslash(b,b)$ does not hold, because the terms have different
+binding structure.  This form of ``equality up to (safe) renaming'' is
+usually referred to as ``$\alpha$-equivalence'', and that is where the
+$\alpha$ in \aprolog\ comes from.
+
+
+\section{An Example Program}
+
+In this section we develop an example \aprolog\ program which
+demonstrates how to encode a simple language with names, binding, and
+capture-avoiding substitution.
+
+For our first example, consider the typed $\lambda$-calculus (a
+notation for anonymous function definitions).  Its syntax is
+summarized by the following grammar
+\begin{eqnarray*}
+e &::=& x \mid e_1~e_2\mid \lambda x.e\\
+\tau &::=& \alpha \mid \tau \to \tau
+\end{eqnarray*}
+where expression variables $x$ and type variables $\alpha$ are drawn
+from disjoint, countably infinite sets.  We can encode the syntax of
+$\lambda$-terms using declarations
+\begin{center}
+\begin{verbatim}
+id  : name_type.
+exp : type.
+
+var : id -> exp.
+app : (exp,exp) -> exp.
+lam : id\exp -> exp.
+
+tid   : name_type.
+ty    : type.
+
+tvar  : tid -> type.
+arrow : (ty,ty) -> ty.
+\end{verbatim}
+\end{center}
+Here, $id$ and $tid$ are declared to be \emph{name types}, tnat is,
+types containing a countable number of distinct names.  As in Prolog
+identifiers starting with an upper-case letter are considered to be
+variables; undefined lower-case identifiers are considered to be
+names.  The types $exp$ and $ty$ are plain (data)types.  We can
+describe the inhabitants of datatypes (but not name types) via further
+declarations of constants and function symbols.  In this case, there
+are three function symbols for expressions: variables, applications,
+and lambdas, and two for types: type variables and function types.
+The type $id\backslash exp$ that is used as the domain of $lam$ is
+called an \emph{abstraction type}, and it denotes the set of
+expressions with one identifier abstracted.  These declarations
+describe how well-formed terms can be constructed: for example, $lam
+(x\backslash var (x))$ is an encoding of the identity function and
+$arrow(tvar(a),tvar(a))$ is an encoding of a type for the identity
+function.
+
+
+Since identifiers, expressions, and types are just terms, \aprolog\ 
+can be used to define interesting functions and relations among such
+terms.  These definitions tend to be significantly closer to their
+``paper'' presentations than is usual for either functional or logic
+languages.  For example, the following rules express the syntax and
+typability relation for simply-typed $\lambda$-terms:
+%
+\[
+\infer{\Gamma\triangleright x\!:\!A}{x\!:\!A\in\Gamma}
+\qquad\infer{\Gamma\triangleright M N\!:\!B} {\Gamma\triangleright
+  M\!:\!A\to B & \Gamma\triangleright N\!:\!A}
+\qquad\infer{\Gamma\triangleright \lambda x.M\!:\!A\to B}
+{\{x:A\}\cup\Gamma\triangleright M\!:\!B}
+\]
+%
+The equivalent \aprolog\ program encoding these rules is
+\begin{center}
+\begin{verbatim}
+of                            :: list (id * ty) * exp * ty -> o.
+of(Gamma,var(X),A)            :- mem((X,A),Gamma).
+of(Gamma,app(M,N),B)          :- of(Gamma,M,arrow(A,B)),
+                                 of(Gamma,N,A).
+of(Gamma,lam(x\M),arrow(A,B)) :- x # Gamma, 
+                                 of([(x,A)|Gamma],M,B).
+\end{verbatim}
+\end{center}
+The first line declares the argument types for the predicate $of$: the
+first argument is a list of identifier-type pairs representing a
+context, the second is an expression, and the third a type.  The
+remaining lines are clauses that define the behavior of this
+predicate.  As can be seen, each clause is almost a literal
+translation of the corresponding inference rule, with $x:A \in \Gamma$
+written as {\tt mem((X,A),Gamma)}, $\Gamma\triangleright M\!:\!A$
+written as {\tt of(Gamma,M,A)}, and $x \notin FV(\Gamma)$ written {\tt
+  x \# Gamma}.
+
+
+In Prolog, we might instead encode a binding $\lambda x.e[x]$ as a
+term "lam(x,var(x))", that is, using atoms "lam/2", 
+"var/1" for the syntax of terms and "x/0" for variables.  
+In \aprolog, we think of $\lambda$ as
+a term constructor mapping abstraction terms $x\backslash e$ to
+$\lambda x.e$.  This view of the world is somewhat similar to that
+adopted in higher-order abstract syntax, where $\lambda$ is defined as a constructor with type $(exp \to exp) \to
+exp$.  But although there are similarities (for example, both function
+variables and abstracted names admit equality up to
+$\alpha$-equivalence), the abstraction type is quite different from the
+function type: for example, there is no built-in application of
+abstractions, and names are ground terms that can escape the scope of
+abstractions in limited ways (as does "x" in the last clause of "of").
+
+Another interesting relation (or function) on $\lambda$-terms is
+\emph{substitution}.  For example, $(x~(\lambda y.y))[x/z] =
+z~(\lambda y.y)$.  In the $\lambda$-calculus, we ask that substitution
+not essentially change the ``meaning'' of a term (as a function).  To
+illustrate this point, consider the following flawed definiton of
+substitution:
+\begin{eqnarray*}
+x[e/x] &=& e\\
+y[e/x] &=& y \qquad (x \neq y)\\
+(e_1~e_2)[e/x] &=& e_1[e/x]~e_2[e/x]\\
+(\lambda y.e_1)[e/x] &=& \lambda y.e_1[e/x]
+\end{eqnarray*}
+Under this definition, substituting $z$ for $x$ in the term $\lambda
+x. z+x$ could result in $\lambda x. x+x$, which is a different
+function.  This can be seen by $\alpha$-renaming $\lambda x.z+x$ to
+$\lambda y.z+y$, in which substituting $x$ for $z$ results in $\lambda
+y.x + y$.  The reason is that in the obvious approach to substitution,
+variables can be ``captured'' when substitution passes under a binding
+(as $x$ is when we pass under the $\lambda x$ binder).
+
+The classical approach to this problem is assume that bound variables 
+are always ``renamed away'' from the all free variables
+(this is called Barendregt's variable convention).  Subject to this
+convention, the above naive definition becomes correct: equivalently,
+we can write the fourth clause as
+\begin{eqnarray*}
+(\lambda y.e_1)[e/x] &=& \lambda y.e_1[e/x]\qquad(y \notin FV(e)\cup\{x\})
+\end{eqnarray*}
+However, though correct and declarative, this does not lead to  a useful Prolog program,
+because the implicit, highly nondeterministic ``renaming away'' step
+needs to be made explicit.  Renaming itself also needs to avoid
+variable capture, so for a mechanical implementation of substitution
+it is necessary to write down explicitly how to rename/substitute
+without capture.  A typical definition of ``capture-avoiding''
+substitution uses a rule
+\begin{eqnarray*}
+(\lambda y.e_1)[e/x] &=& \lambda z.e_1[z/y][e/x]\qquad(z \notin FV(e)\cup\{x\})
+\end{eqnarray*}
+This definition renames aggressively, picking a fresh variable $z$
+whenever a $\lambda$ binding is encountered, at the cost of no longer
+being ``obviously'' structurally recursive (because of the nested applications of the substitution function).
+
+However, there are still problems with turning this definition into a
+Prolog-style declarative program.  For example, the choice of $z$ is
+very open-ended, and to choose fresh variables $z$ efficiently it is
+necessary to maintain a ``store'' of unused variable names (or an 
+index of the least unused fresh variable name).  This
+store is passed as an extra argument and return value of $subst$.
+Also, this definition causes multiple passes to be made over the term
+because of the renaming.  To reduce this to a single pass, we would
+have to add an additional argument mapping renamed variables to their
+renamings.  
+
+In practice, Prolog programmers generally resort to 
+side-effecting, nonlogical predicates such as "assert" and "retract" 
+in order to implement a "gensym" predicate which is guaranteed to 
+return a fresh name whenever it is called.  Though this approach is 
+efficient and convenient (since the explicit source of fresh names
+can be left out of the program), the resulting programs 
+are no longer purely logical.  Thus, Prolog programmers usually must choose
+between the complexity of \emph{program code} in the pure approach and 
+the complexity of \emph{program semantics} in the effectful approach.
+
+In \aprolog, on the other hand, we are able to write a pure definition that
+is essentially the same as the declarative definition, yet correct and
+(in principle) implementable as efficiently as the "gensym" approach:
+\begin{verbatim}
+subst                 ::  exp * exp * id -> exp.
+subst(var(x),E,x)     = E.
+subst(var(y),E,x)     = var(y) :- y # x.
+subst(app(E1,E2),E,x) = app(subst(E1,E,x),subst(E2,E,x)).
+subst(lam(y\E1),E,x)  = lam(y\subst(E1,E,x)) :- y # E, y # x.
+\end{verbatim}
+where we read $y \fresh x$ as $y \neq z$ and $y \fresh (E,x)$ as $y
+\notin FV(E)\cup(x)$.  In fact, in \aprolog, syntactically distinct
+name identifiers like $x,y$ are assumed to denote distinct names, so
+the $y\fresh x$ constraints are redundant.  On the other hand, we
+cannot assume that bound variables always are distinct from other
+variables in scope, so we must check $y \fresh E$ in the fourth
+clause.  Because unification in \aprolog\ is up to
+$\alpha$-equivalence, the implicit renaming step from the declarative
+definition remains implicit.
+
+\part{User's Guide}
+\chapter{Tutorial}
+
+\section{Running the Interpreter}
+
+The current implementation of \aprolog\ is an interpreter written in
+the language Objective Caml (OCaml) and using no libraries or extensions.  
+Therefore, it should run on any
+computer system that the current version of OCaml runs on.  If you 
+haven't already, get
+the \aprolog\ source distribution and install it according to the
+accompanying instructions.
+
+After starting \aprolog, you will see a banner followed by:
+\begin{verbatim}
+AlphaProlog 0.3
+?- 
+\end{verbatim}
+The toplevel loop prompt {\tt ?-} indicates that \aprolog\ is
+expecting a query.  In the toplevel loop, you can't define any new
+types, predicates, or functions, or add any facts or clauses to the
+database.  Since no external declarations have been loaded, we can
+only ask queries involving built-in predicates/functions.
+
+Let's start with evaluation ({\tt is}).  Type
+\begin{verbatim}
+?- X is 1 + 2.
+\end{verbatim}
+You should see
+\begin{verbatim}
+Yes.
+X = 3 
+\end{verbatim}
+The interpreter now waits for further input from you.  If you type
+{\tt ;} in response to this, the interpreter looks for another
+solution.  In this case, there isn't one:
+\begin{verbatim}
+;
+No.
+\end{verbatim}
+
+\section{Built-in Data and Types}
+
+Many of the built-in datatypes of \aprolog\ are familiar from
+Prolog-like and ML-like languages.  They include booleans (written
+"tt" and "ff"), integers ("-1","0","1","2",...), character constants
+("'a'","'b'","'c'"), string constants ("\quot{abc}"), the unit type
+(with the sole value "()"), pairs ("(1,2)", "('a',1)"), and lists
+("[]", "1::[2]", "[1,2,3]", "[1|[2,3]]").
+
+In addition, \aprolog\ supports name and abstraction types.  There are
+no built-in name types, but new name types can be declared as follows:
+\begin{verbatim}
+id : name_type.
+\end{verbatim}
+This says that "id" is a name type.  Name types are inhabited by
+infinitely many distinct but ``indeterminate'' names.  We can always
+come up with a new name of type "id", just by writing down an unused
+(lower-case) identifier in a place where an "id" is expected.  In
+addition to being placed in user-defined data structures, names can be
+used in\emph{transpositions}, \emph{abstractions}, and \emph{freshness tests} (to be defined shortly).
+
+A \emph{transposition} is a term of the form \verb|(a~b) T| where "a",
+"b" are names (of the same type) and T is an arbitrary term.  The
+result is a term with all occurrences of "a" and "b" swapped.  Any
+variables in "T" will be annotated with the transposition as well,
+indicating that once the variable is instantiated the delayed
+transposition should be applied to it.  For example,
+\begin{verbatim}
+?- X = (a~b) (a,b,c) 
+Yes.
+X = (b,a,c)
+\end{verbatim}
+
+An \emph{abstraction} is a term of the form \verb|a\T| where "a" is a
+name and "T" is a term.  Abstractions describe a set of
+$\alpha$-equivalent terms (that is, equivalent up to consistent
+renaming).  Two abstractions are equal if they describe the same such
+set.  For example,
+\begin{verbatim}
+?- a\a = b\b.
+Yes.
+?- a\b = b\b.
+No.
+?- a\b = c\b.
+Yes.
+\end{verbatim}
+
+It is important to point out that logic variables are not allowed on
+the left hand side of an abstraction, or as the names in a
+transposition.  Thus, terms like \verb|X\X| and "(X~Y)X" are not
+well-formed.
+
+\section{Unification and Freshness}
+
+\aprolog\ provides two special built-in predicates, $=$ (unification)
+and $\fresh$ (freshness).  For example, unification for ground terms
+is just syntactic equality:
+\begin{verbatim}
+?- 1 = 1.
+Yes.
+?- 1 = 0.
+No.
+\end{verbatim}
+
+Free variables can be instantiated to terms to solve the equations:
+\begin{verbatim}
+?- 1 = X, X = Y, Y = Z.
+Yes.
+X = 1
+Y = 1
+Z = 1
+?- X = 1, Y = plus X 0, Y = X.
+No.
+\end{verbatim}
+In the last query, the "Y = X" subgoal fails because "plus 1 0" is
+syntactically different from "1".
+
+Freshness tests are a propositions of the form \verb|a # T|, where "a"
+is a name and "T" is a term. They test that the name "a" does not
+occur \emph{free} in "T" (that is, all occurrences are enclosed by an
+abstraction of "a".)  Any two syntactically different names are
+assumed to be distinct (in contrast to logic variables, which might
+eventually be identified through unification.)  For example,
+\begin{verbatim}
+?- a # a.
+No.
+?- a # b.
+Yes.
+?- a # b\a.
+No.
+?= a # b\b.
+Yes.
+?- a # a\a.
+Yes.
+?- a # (a~b) a.
+Yes.
+\end{verbatim}
+As the last example illustrates, freshness checking occurs after any
+transpositions have been applied.
+
+Testing whether terms involving abstractions are equal is more complex
+than ordinary first-order unification such as Prolog uses.  For
+example:
+\begin{verbatim}
+?- x\y\(X1,y) = y\x\(x,X1).
+No.
+
+?- x\y\(X2,y) = y\x\(x,X3).
+Yes.
+X2 = x
+X3 = y
+\end{verbatim}
+
+The results of unification can contain delayed permutations as well as
+additional freshness constraints.
+\begin{verbatim}
+?- x\X = y\Y.
+Yes.
+X = (x~y)Y
+
+?- x\X = y\X.
+Yes.
+x # X.
+y # X.
+
+?- x\y\(y,X6) = x\x\(x,X7).
+Yes. 
+X6 = (x~y)X7
+y # X7
+\end{verbatim}
+In the last example, if "X7" were instantiated to "y", then we would
+have \verb|x\y\(x,x) = x\x\(x,x)|, but the "x"'s in the first term are
+bound to the outer "x" whereas in the second term they are bound to
+the inner "x".
+
+Similarly, freshness tests of non-ground terms might generate new
+constraints.
+\begin{verbatim}
+?- x # x\Y.
+Yes.
+?- x # y\Y.
+Yes.
+x # Y
+?- x # y\Y, x = Y.
+No.
+\end{verbatim}
+
+\section{Lists and Namespaces}
+\aprolog\ has a small list library.  To import the list library, do:
+\begin{verbatim}
+?- #use "list.apl".
+\end{verbatim}
+This indicates that "list.apl" defines a namespace "List" which
+contains several predicates defining common list operations.  To refer
+to list predicates within the namespace, we prefix them with "List.".
+
+For example, to append two lists we can do
+\begin{verbatim}
+?- List.append([1,2],[3,4],X).
+Yes. 
+X = [1,2,3,4]
+\end{verbatim}
+Of course, as usual in logic programming we can also run predicates
+``backwards'' and nondeterministically:
+\begin{verbatim}
+?- List.append(X,Y,[1,2,3,4]).
+Yes.
+X = [] 
+Y = [1,2,3,4] 
+;
+Yes.
+X = [1] 
+Y = [2,3,4] 
+;
+...
+\end{verbatim}
+or solve for unknowns:
+\begin{verbatim}
+?- List.append([1|Y],Y,[1,X,4]).
+Yes.
+X = 4 
+Y = [4] 
+\end{verbatim}
+
+Finally, we can ``open'' a namespace, which makes all of its
+identifiers (including other namespaces) bound locally so that we
+don't have to refer to them using explicitly qualified names.  For
+example:
+\begin{verbatim}
+?- #open List.
+?- append([1|Y],Y,[1,4,4]).
+Yes.
+Y = [4] 
+\end{verbatim}
+Warning: Using "open" incautiously can result in strange behavior.  It
+shadows any previous identifier declarations in the current namespace
+with new ones; however, existing definitions that referred to the old
+identifiers will not change.  Thus, had we already defined our own
+version of "append" (possibly having a different type signature),
+after opening "List" we can no longer refer to this definition by
+name.  However had we also defined a predicate "foo" in terms of the
+shadowed "append", "foo" would continue to work.
+
+In the rest of this tutorial we assume that "List" has been opened.
+\section{Defining New Types}
+
+Let's define a type representing simple $\lambda$-expressions.  Since
+you can't enter declarations at the toplevel, we need to put this into
+a file.  Call it "tutorial.apl".
+
+To reflect the expression syntax, we need to define two types: a name
+type for variable identifiers, and the datatype of expressions.
+\begin{verbatim}
+id : name_type
+exp : type.
+\end{verbatim}
+This says that "id" is a name type and "exp" is a datatype.
+
+Now we want to define the constructors for exp.
+\begin{verbatim}
+var : id -> exp.
+app : (exp,exp) -> exp.
+lam : (id\exp) -> exp.
+\end{verbatim}
+This declares function symbols var, app, and lam with the
+corresponding types.  Thus, given an identifier "v", we can construct
+an expression by applying the constructor "var" to it; similarly given
+expressions "E1" and "E2" we can form expression "app(E1, E2)" and
+given an expression \verb|E| and a name \verb|a| we can form an
+expression \verb|lam(a\E)|.
+
+Now save the file and start \aprolog\ as follows:
+
+\begin{verbatim}
+$ aprolog tutorial.apl
+\end{verbatim}%$
+You should see:
+\begin{verbatim}
+alpha-Prolog 0.3
+Reading file tutorial.apl...
+?-
+\end{verbatim}
+Try entering a few $\lambda$-terms (with or without meta-variables)
+and comparing them for equality or testing freshness.
+\begin{verbatim}
+?- lam (a\var a) = lam (b\var b).
+Yes.
+?- lam (a\var A) = lam (b\var A).
+Yes.
+a # A
+b # A
+\end{verbatim}
+
+\section{Predicates}
+
+Now let's define a simple predicate on $\lambda$-terms: enumerating a
+list containing all free variables (though possibly with duplicates).
+Put the following in tutorial.apl:
+\begin{verbatim}
+fvs :: exp * list id -> o.
+fvs(var(V),[V]).
+fvs(app(E1,E2),L) :- fvs(E1,L1),fvs(E2,L2),append(L1,L2,L).
+fvs(lam(x\E),L) :- fvs(E,L'), remove(x,L',L).
+\end{verbatim}
+Note that we use the list library function to remove (all occurrences
+of) "x" from the list in the third case.
+
+Fire up \aprolog\ again and try a few queries.
+\begin{verbatim}
+?- fvs(lam (x\var x),X).
+Yes.
+X = [] 
+?- fvs(lam (x\var y),X).
+Yes.
+X = [y] 
+?- fvs(app (var y) (var y),X).
+Yes.
+X = [y,y] 
+\end{verbatim}
+Note that duplicate names in the term result in duplicate list
+entries.
+
+\section{Definitions}
+
+We can define (typed) \emph{constants} with the keyword "cnst", and provide values for such constants using equations.  For example,
+\begin{verbatim}
+cnst fortytwo = int.
+fortytwo = 6 * 9.
+
+cnst id = exp.
+id = lam(x\var(x))
+\end{verbatim}
+Note that this does not actually evaluate the term 6 * 9 to an integer,
+but instead it is left as the term $times~6~9$.
+
+At present, constants are really just notational definitions for
+terms.  Thus, wherever a constant occurs, it will be replaced by the 
+defined expression.  Such definitions can therefore be nondeterminstic 
+and in particular can mention fresh names.  These will be instantiated
+with names not already in use in the current context.  Constant definitions
+which contain fresh names are likely to lead to odd behavior because 
+they are translated to program clauses with new-quantified names.  Proof
+search is incomplete in the current implementation if such clauses are 
+present.
+\begin{verbatim}
+cnst fresh = id.
+fresh = a.
+
+?- X = (fresh,fresh).
+X = (a1,a2).
+
+?- fresh = fresh.
+No.
+\end{verbatim}
+
+
+\section{Functions}
+
+Now let's take on a harder problem: defining capture-avoiding
+substitution.  We'll define substitution as a function since we
+usually want to run it ``forward'' (i.e., given a term and a
+substitution, construct the result) rather than ``reverse''.
+
+To declare a function write (in tutorial.apl):
+\begin{verbatim}
+func subst(exp,[(id,exp)]) = exp.
+\end{verbatim}
+This expresses that $subst$ is a function symbol taking two arguments:
+a term and a list of identifier-term pairs (i.e., the subsitution),
+and producing a term.  Now let's define cases.  Clauses for function
+definitions are of the form $f(t_1,\ldots,t_n) = t \mathrel{:-} G$,
+where $f$ is the function being defined, the $t_i$ are the inputs for
+which the clause defines a value, $t$ is the value, and $G$ is a
+subgoal that must be solved for the clause to apply.  For example
+\begin{verbatim}
+subst(var(A),S)     = T                           :- mem((A,T),S).
+subst(var(A),S)     = var A                       :- not(mem((A,_),S)).
+subst(app(T1,T2),S) = app(subst(T1,S),subst(T2,S)).
+subst(lam(x\T),S)   = lam(x\subst(T,S))           :- x # S.
+\end{verbatim}
+The first clause asserts that if $A$ is bound to a term $T$ in $S$
+then $T$ is the result.  The second, that if $A$ is not so bound, then
+$var(A)$ is the result.  The third clause just propagates $subst$ past
+an application.  The final clause propagates $subst$ past a $lam$,
+\emph{provided the bound variable $x$ is not mentioned in $S$}.  Since
+$x$ appears only in an abstraction, it is \emph{always} possible to
+satisfy this constraint by renaming $x$ (although at times renaming
+may not be necessary).  In fact, this is what \aprolog\ does by
+default.
+
+Is this definition really correct? Let's try some examples.
+\begin{verbatim}
+?- X = subst(var(a), [(a,var(b))]).
+Yes.
+X = var b
+?- X = subst(lam(a\var(a)), [(a,var(b))]).
+Yes. 
+X = lam (a\var(a))
+?- X = subst(lam(b\var(a)), [(a,var(b))]).
+Yes.
+X = lam (b1\var(b))
+;
+No.
+\end{verbatim}
+Note that in the final case, the bound variable $b$ has been freshened
+to $b_1$.  Remember that when a name is used in an abstraction, we
+lose control over its specific value since the abstraction really
+represents an equivalence class of $\alpha$-equivalent terms.  The
+last example also verifies that a simple form of variable capture is
+actually impossible.  That is, it's not the case that $subst$ happens
+to get the right answer the first time it succeeds; in fact, no
+alternative wrong answers are possible.
+
+Now this definition of $subst$ has some disadvantages: for example the
+first two clauses overlap and may repeat the membership test $mem
+((A,V),S)$.  We can make this more efficient using \aprolog's
+``if-then-else'' construct:
+\begin{verbatim}
+subst(var A,S) = T :- mem ((A,V),S) -> T = V | T = var(A).
+\end{verbatim}
+Similarly, we can collapse the other two clauses into one completely
+general case using disjunction:
+\begin{verbatim}
+subst(T,S) = T' :- ( T = var(A), 
+                     if mem((A,V),S) 
+                     then T = V 
+                     else T = var(A)
+                   ; T = app(T1,T2), 
+                     T' = app(subst(T1,S),subst(T2,S)))
+                   ; T = lam(x\T1), 
+                     x # S, 
+                     T' = lam(x\subst(T1,S)))
+\end{verbatim}
+
+Another alternative would be to replace the call to $mem$ with a
+substitution-specific $lookup$ function:
+\begin{verbatim}
+func lookup(id,[(id,exp)]) = exp.
+lookup(A,[]) = var A.
+lookup(A,[(A,V)|S]) = V.
+lookup(A,[(B,V)|S]) = lookup(A,S).
+...
+subst(var A,S) = lookup(A,S).
+\end{verbatim}
+
+Both this and the earlier definition have the potential disadvantage
+that if duplicate bindings are present in a substitution (e.g., $s =
+[(a,t_1),(a,t_2)]$), then $lookup$ or $mem$ can succeed with multiple
+possible answers.  We therefore regard substitutions to be well-formed
+only if there are no such duplicates.
+
+\chapter{Running \aprolog}
+\section{Command Line Options}
+
+\begin{itemize}
+\item {\tt -d} Enables debugging messages generated by the typechecker
+  and interpreter.  Primarily useful for implementors.
+\item {\tt -q} Quit interpreting after reading all input.  Useful for
+  batch processing.
+\item {\tt -f} Always use statically fresh names during resolution.
+  This will avoid backtracking due to searching for the correct
+  instantiation of names in a program clause by always instantiating
+  to fresh names.  But this will also lead to missing solutions.
+  
+\item {\tt -L} Add argument directory to library search path (the
+  directories searched by the {\tt \#use} directive).
+  
+\item {\tt -t} Sets tracelevel indicating how much trace information
+  is printed out during proof search.  Tracelevel 0 means no
+  information is printed; this is the default.  Tracelevels 1 and 2
+  print succinct and verbose traces respectively.
+\item {\tt -to} Typecheck input file only; do not solve goals.  Useful
+  for debugging.
+\end{itemize}
+
+Experimental options:
+\begin{itemize}
+\item {\tt -hh} Permits logic program clauses to include more general
+  formulas called \emph{hereditary Harrop formulas}, including, for
+  example, local implication and quantification.
+
+\end{itemize}
+
+\section{Directives}
+ 
+\aprolog\ provides several directives that control the interpreter.
+In this section we list them and drscribe how they work.
+
+\begin{itemize}
+\item{\tt \#quit} The {\tt \#quit} directive makes the interpreter
+  stop running.
+\item{\tt \#help} The {\tt \#help} directive prints a help message
+  explaining basic commands.
+\item{ \tt \#type {\it exp}} The {\tt \#type} directive typechecks its
+  input and, if the typechecking is successful, prints out a typing
+  judgment that shows the most general types of the expression's
+  variables and names, as well as the type of the expression itself.
+\item{\tt \#trace {\it n}} The {\tt \#trace} directive sets the
+  \emph{trace level} of the interpreter, which is a number between 0
+  and 3 indicating how much information is printed out during proof
+  search.  The default is trace level 0, no information.  Trace level
+  1 prints out each atomic goal as it is solved, as well as
+  backtracking information.  Trace level 2 prints out all goals.
+  Trace level 3 prints out all attempted resolutions.
+\item {\tt \#break {\it sym}} The {\tt \#break} directive sets a
+  breakpoint at a given predicate named by {\it sym}.  Execution will
+  halt whenever a successful resolution step with {\it sym} as its
+  subject occurs.  In concert with {\tt \#trace}, this can be used for
+  debugging.  If no argument is given, then all breakpoints are
+  listed.
+  
+\item {\tt \#clear {\it sym}} The {\tt \#clear} directive clears a
+  breakpoint.  If no argument is given, all breakpoints are cleared.
+  
+\item{\tt \#use {\it filename}} The {\tt \#use} directive instructs
+  the intepreter to open and read an external \aprolog\ source file,
+  processing all the declarations, clauses and goals therein as if
+  they had been typed at the interpreter prompt.  The main difference
+  is that queries are printed out as they are executed (to make the
+  output more intelligible) and that the interpreter only looks for at
+  most one solution.
+\end{itemize}
+
+\chapter{Language Extensions}
+
+The current implementation contains several provisional or experimental 
+extensions, whose presence or behavior are subject to (and indeed, likely to) change.  These include 
+\begin{itemize}
+\item a \emph{name-concretion} operation
+\item a \emph{built-in capture-avoiding substitution operation}
+\item a \emph{lightweight specification checker}
+\end{itemize}
+
+
+\section{Name concretion}
+
+The name-abstraction operation can be thought of as an introduction form for
+the name-abstraction type.  Normally, such introduction forms are accompanied by a dual elimination form, which makes use of a value of the constructed type.  Such an operation exists for name-abstraction and is called \emph{concretion}.  While not strictly necessary (as we shall see, it can be translated out), concretion is handy for writing programs in a style familiar from higher-order logic programming, and in particular, is useful for writing programs in a way that makes it obvious that they are well-behaved (see \ref{sec:pure}).
+
+A concretion is an expression of the form $t \conc a$, or \verb|t @ a|, where
+$t$ is any term of abstraction type $\nu \abs \tau$ and $a$ is of type $\nu$.
+The result of an abstraction is also of type $\tau$.
+
+Operationally, a concretion can be thought of as replacing the bound name of an abstraction with a new name, which must not already occur in the body of the abstraction.  For example:
+\begin{verbatim}
+?- X = (a\(a,b))@a.
+Yes.
+X = (a,b).
+?- X = (a\(a,b))@b.
+No.
+?- X = (a\(a,b))@c.
+Yes.
+X = (c,b).
+\end{verbatim}
+
+Internally, concretion is translated out by replacing a goal formula
+$G[t@a]$ containing a concretion with $\exists X. t = a \abs X \wedge G[X]$.
+Similarly, program clauses $D[t @ a]$ are translated to clauses $\forall X. x = a \abs X \rightarrow D[X]$.  This is why concretions such as $(a \abs(a,b)) \conc b$ that violate the freshness constraint are viewed as a proof search failure rather than a type or dynamic error.
+
+\section{Built-in substitution}
+
+As language definitions grow in size, with more syntax classes, constructors,
+it becomes tedious to write all the cases of the capture-avoiding substitution operation, especially because almost all of the cases are completely determined by the types of the constants.  As a convenience, at present \aprolog provides a capture-avoiding substitution operator $t\{u/v\}$; here, $t,u,v$ are all \emph{terms}, and in addition $u$ and $v$ must have the same type.  The intended meaning of this operation is:  Visit each subterm of $t$ and replace every occurrence of $v$ with $u$.  This is defined as follows on the structure of ground terms:
+\begin{eqnarray*}
+  v\{u/v\} &=& u\\
+  c\{u/v\} &=& c\\
+  a\{u/v\} &=& a\\
+  f(\vec{t})\{u/v\} &=& f(\vec{t}\{u/v\})\\
+  {a}\abs{t})\{u/v\} &=& {a}\abs{t\{u/v\}} \quad (a \fresh u,v)
+\end{eqnarray*}
+with the first case taking precedence over the other four in case of ambiguity.
+
+This operator is considered an evaluation form; it is therefore only usable when $t,u,v$ are ground at run-time.  A more principled approach would be to unify modulo an appropriate theory of substitution.
+
+This substitution form is usable for replacing occurrences of variables with arbitrary terms (of the same type), but can also be used to replace arbitrary subterms.  For example:
+
+\begin{verbatim}
+?- X is x{y/x}.
+Yes.
+X = y
+
+?- X is (x\(x,y)){x/y}.
+Yes.
+X = x1\(x1,x)
+
+?- X is lam(x\var(y)){app(var(x),var(y))/var(y)}.
+Yes. 
+X = lam(x1\app(var(x),var(y)))
+
+?- X is lam(x\var(y)){var(z)/lam(x\var(y))}
+Yes.
+X = var(z)
+\end{verbatim}
+
+Note that while in the first two instances, we replace a name "x" with another name "y", in the other two, we must replace a term of type "exp" (such as "var(x)") with another term of type "exp".  We cannot simply write \verb|lam(x\var(y)){app(var(x),var(y))/y}| in the third case, since there is no way for the implementation to know how to replace an occurrence of "y", which has type "id", with a term of type "exp".
+
+
+\textbf{This feature is very likely to change, either by being replaced with an approach based on generating pure functions that perform substitution, or by extending the constraint solver with support for substitution constraints.  }
+
+
+
+
+
+
+\section{Specification checking}
+
+TODO.
+
+\part{Language Reference}
+
+\chapter{Syntax}
+\section{Lexical Structure}
+
+The text of an \aprolog\ program is divided into contiguous tokens
+based on the following classifications.  At every step, the longest
+matching rule applies.
+
+\subsection{Whitespace}
+
+Whitespace is a nonempty sequence of space, tab, or newline
+characters.  Except where noted otherwise, whitespace is ignored.
+
+\subsection{Comments}
+There are three style of comments in \aprolog:
+\begin{itemize}
+\item Prolog-style line comments: lines starting with "\%", as
+\begin{verbatim}
+% comment
+% comment
+noncomment
+%comment
+\end{verbatim}
+\item C/Prolog-style nonnested block comments delimited with "/*" and
+  "*/", as
+\begin{verbatim}
+/* comment
+   comment */
+noncomment
+/* comment */
+\end{verbatim}
+\item ML-style nested block comments delimited with "(*" and "*)", as
+\begin{verbatim}
+(* comment
+(* comment *) *)
+noncomment
+(* comment *)
+\end{verbatim}
+  Comments are always ignored in \aprolog.
+\end{itemize}
+
+\subsection{Directives}
+Directives are commands to the interpreter or compiler.  Their
+behavior is implementation-dependent; implementations may simply
+ignore them.  A directive is a string beginning with `\verb|#|' and
+ending with `\verb|.|'.  Directives may occupy multiple lines.  The
+first non-whitespace character on a line containing a directive must
+be the leading `\verb|#|', and the last non-whitespace character on
+the line ending the directive must be the terminating `\verb|.|'.
+
+\subsection{Symbols}
+\subsubsection{Keywords}
+
+The following strings are reserved words (keywords) in \aprolog:
+\begin{verbatim}
+cnst      exists     ff       forall    func       infixl    
+infixn    infixr     is       namespace name_type  new      
+not       pred       true     tt        type      
+\end{verbatim}
+
+\subsubsection{Delimiters}
+\aprolog\ recognizes the following delimiters:
+\begin{verbatim}
+( ) [ ] { }
+\end{verbatim}
+
+\subsubsection{Operators}
+\aprolog\ reserves the following operator symbols:
+\begin{verbatim}
+= | , => -> --> :- ? ! : ; # \ ::
+\end{verbatim}
+
+\subsubsection{Identifiers}
+
+A textual identifier is a nonempty sequence of letters, digits,
+apostrophes, and underscores, starting with a letter or underscore,
+that does not form a reserved keyword.  An identifier starting with an
+underscore or capital letter is called a variable.  Otherwise, an
+identifier is called a symbol if it has been assigned some special
+meaning and a name if it has not.
+
+The variable `\verb|_|' has a special meaning: distinct instances are
+taken to refer to different, ``anonymous'' variables.  Accordingly,
+`\verb|_|' is called the anonymous variable.
+
+An infix identifier is a sequence of the following symbols:
+\begin{verbatim}
+| * + < > = - & ^ $ @ ! ~ ?
+\end{verbatim}%$
+that does not form a reserved operator.  Infix identifiers (and their
+arity and precedence) can be user-defined.
+
+Enclosing an infix identifier in parentheses ("(+)") means it is
+treated as a (prefix) textual identifier.  Conversely, enclosing a
+textual identifier in backquotes ("`sym`") means it is treated as an
+infix operator.
+
+A namespace-qualified identifier is a sequence of textual identifiers
+separated by "asdf" and terminated by either a textual or infix
+identifier.  For example, "List.mem" and "Int.+" are legal namespace
+identifiers.  A namespace identifier whose subject is infix is treated
+as prefix, not infix.
+
+
+
+\subsection{Literals}
+
+\subsubsection{Booleans}
+There are two Boolean truth value literals, "tt" (true) and "ff"
+(false).
+\subsubsection{Integers}
+A (decimal) integer constant is a sequence of digits "0"--"9" possibly
+starting with a minus sign "-" insicating a negative number.  Other
+bases are not supported.
+
+\subsubsection{Characters}
+A character constant is a printable ASCII character or an escape
+sequence enclosed in single quotes.
+\subsubsection{Strings}
+A string is a sequence of printable ASCII character or escape
+sequences enclosed in double quotes.
+
+\section{Abstract Syntax}
+\subsection{Terms}
+
+The syntax of \aprolog\ terms is summarized by the following grammar:
+\begin{eqnarray*}
+t &::=& () \mid int  \mid bool \mid char \mid string \\
+&\mid&  c \mid f~t_1 \cdots t_n \mid (t_1,\ldots,t_n) \mid  [] \mid t{::}u \mid [t_1, \ldots , t_n] \mid [t_1, \ldots,t_n|t] \mid X \mid \_ \\
+&\mid& \mathsf{n} \mid \mathsf{n} \backslash t \mid (\mathsf{n}\text{\symbol{126}}\mathsf{m})t
+\end{eqnarray*}
+\subsection{Types}
+The syntax of \aprolog\ types is summarized by the following grammar:
+\begin{eqnarray*}
+ty &::=& \mathsf{unit} \mid \mathsf{int}  \mid \mathsf{bool} \mid \mathsf{char} \mid \mathsf{string} \\
+&\mid&  tc \mid tf~ty_1 \cdots ty_n \mid (ty_1,\ldots,ty_n) \mid  [ty]\mid A \mid \_ \\
+&\mid& nty \backslash ty
+\end{eqnarray*}
+\subsection{Formulas}
+\subsubsection{Atomic formulas}
+\begin{eqnarray*}
+A & ::= & q \mid p~t_1\cdots t_n  \mid f~t_1\cdots t_n = t
+\end{eqnarray*}
+An atomic formula (or predicate) consists of either a single predicate
+symbol $p$ or a symbol applied to a list of arguments $p~t_1\cdots
+t_n$. Atomic formulas of the form $f~t_1\cdots t_n= t$ correspond to
+function definitions, and these are removed by the flattening phase
+described in Chapter~\ref{ch:flattening}.
+
+\subsubsection{Clauses}
+The syntax of \aprolog\ program clauses is summarized by the following
+grammar:
+\begin{eqnarray*}
+P &::=&  A \mid A \ent G \mid A \longrightarrow D\\
+\end{eqnarray*}
+The first two forms are \emph{Horn clauses} (expressed in
+implicational form).  That is, they are either a single predicate (a
+\emph{fact}) or a predicate qualified by a condition $G$ (a
+\emph{rule}).  The third form is a \emph{definite clause grammar
+  rule}, which says that the nonterminal synbol $A$ can be rewritten
+to the DCG body $D$.
+
+
+\subsubsection{Definite clause grammar bodies}
+
+\begin{eqnarray*}
+D &::=&  A \mid D , D \mid D ; D \mid char \mid string \mid \{G\}
+\end{eqnarray*}
+A definite clause grammar rule body is either an atomic predicate
+(representing a nonterminal), sequential composition $D,D$,
+disjunciton $D;D$, a literal character or string (a terminal symbol),
+or a goal enclosed in braces.
+
+\subsubsection{Goals}
+
+Goals (or queries) are formed using the following syntax:
+\begin{eqnarray*}
+G &::=& \mathsf{true} \mid A \mid t_1 \mathrel{\mathsf{is}} t_2 \mid t_1 = t_2 \mid \mathsf{n} \fresh t \\
+&\mid& G_1 , G_2 \mid G_1 ; G_2 \mid {!} \mid G_1 \to G_2|G_3 \mid \mathsf{not}(G)
+\end{eqnarray*}
+They include the trivial goal $\mathsf{true}$, atomic predicates,
+evaluation operator $\mathsf{is}$, unification $=$, freshness
+$\fresh$, conjunction $G,G$, disjunction $G;G$, ``cut'' $!$,
+if-then-else $G_1 \to G_2 \mid G_3$, and negation $\mathsf{not}(G)$.
+
+\subsection{Declarations}
+
+{\tt infix{\em d}}\ {\it sym n} These declarations make an identifier
+{\it sym} into be a left-, right-, or non-associative infix operator
+(where {\tt \em d} is {\tt l}, {\tt r}, or {\tt n} respectively).
+Such symbols can be either plain infix identifiers or backquoted
+textual identifiers.  The number {\it n} is a precedence between 1 and
+9 indicating how strongly the operator binds relative to other
+operators.
+
+
+\section{Pure, Well-Behaved Programs}
+
+In this user's guide, we have explained the behavior of programs in 
+intuitive and sometimes operational terms.  However, \aprolog is based
+on a logic called \emph{nominal logic} and its programs can also be viewed
+as theories in that logic.  This is only the case, however, when 
+certain features are avoided.  Such features can cause illogical program behavior that  
+differs from what one would expect based on the logical semantics.  We
+have already seen examples such as the "fresh" constant definition.
+
+As in ordinary Prolog, it is possible for a program to 
+pursue an infinite branch of the proof search tree before exploring 
+all of the finite branches (that is, depth-first proof search is not 
+``fair'').  Moreover, the ``cut'', guards, evaluation ("is"), and other nonlogical predicates 
+can lead to illogical behavior for \aprolog programs as in Prolog.  On the other hand, 
+\aprolog performs the occurs check which 
+can cause ordinary Prolog programs to behave differently from their 
+logical meaning.
+
+In the current implementation, for a program's logical and (nondeterministic) operational
+behavior to coincide, it must avoid impure features of Prolog (including the built-in capture-avoiding substitution operator) and must also 
+avoid the use of rules in which names occur ``essentially'' in the head of a clause. It is neither necessary nor sufficient that no names occur in the head of a clause; rather, the appropriate condition is that \emph{no names may occur free in the head of any instance of a clause}.
+
+The "fresh" constant from \ref{sec:??}, as well as the following predicate version, are obviously not well-behaved:
+\begin{verbatim}
+pred fresh(id).
+fresh(a)
+\end{verbatim}
+
+The lambda clause of typechecking is well-behaved, because although a name is mentioned in the head, it cannot occur free in the head of any instance of the clause.
+
+
+\chapter{Type System}
+
+\section{Basic Types}
+
+\section{Compound Types}
+
+\section{Polymorphism}
+
+
+
+
+\appendix
+
+\chapter{Libraries} 
+Currently, there are three libraries: {\tt Base} (containing base
+types and built-in functions), {\tt List} (containing list operations)
+and {\tt Option} (containing operations on optional values).  For each
+prdicate or function, we summarize its type and expected modes of use
+(i.e., which arguments can be thought of as inputs or putputs).  These
+modes are not currently part of or checked by \aprolog.
+
+\section{\tt Base}
+
+\section{\tt List}
+The {\tt list} namespace includes several common list-manipulating
+predicates.
+
+\begin{itemize}
+\item{\tt pred append ([A],[A],[A])}\\
+  {\tt mode append (in,in,out)}\\
+  {\tt mode append (out,out,in)}\\
+  Holds if the third argument is the result of appending the first two
+  arguments.
+\item{\tt pred mem(A,[A])}\\
+  {\tt mode mem(out,in)}\\
+  Holds if the first element is an element of the second.
+\item{\tt pred concat([[A]],[A])}\\
+  {\tt mode concat(in,out)}\\
+  Holds if the second list is the result of concatenating all the
+  elements of the first list.
+\item{\tt pred remove(A,[A],[A])}\\
+  {\tt mode remove(in,in,out)}\\
+  Removes all occurrences of the first argument from the second and
+  returns the result as the third.
+  
+
+\item{\tt pred reverse([A],[A])}\\
+  {\tt mode reverse(in,out)}\\
+  Holds if the first list is the reverse of the second (and vice
+  versa).
+\end{itemize}
+
+
+\section{\tt Option}
+\begin{itemize}
+\item
+  {\tt opt : type -> type}\\
+  The type constructor for optional values.
+\item
+  {\tt none : opt A}\\
+  An optional value where a value is not present.
+\item
+  {\tt some : A -> opt A}\\
+  An optional value where a value is present.
+\item {\tt get\_opt (opt A,A)}\\
+  {\tt mode get\_opt(in,out)}\\
+  Succeeds if the first argument is $some(A)$ and the second argument
+  is $A$.
+\end{itemize}
+
+\chapter{Flattening}
+\label{ch:flattening}
+
+\aprolog supports function definitions:
+\begin{verbatim}
+func f(t1,...,tn) = t.
+f(s1,...,sn) = s :- G1.
+...
+\end{verbatim}
+These are currently implemented using \emph{flattening}, a
+source-to-source translation that replaces $n$-argument function
+definitions with $n+1$-ary predicates, as follows:
+\begin{verbatim}
+pred p_f(t1,...,tn,t).
+p_f(s1',...,sn',s') :- G1'.
+\end{verbatim}
+and all occurrences of defined function calls $f(u1,...,uk)$ in the program
+(including \verb|s1| through \verb|sn|, \verb|s|, and \verb|G|) are
+adjusted to replace the call subterms with fresh variables, and in the
+nearest enclosing goal context the variable is constrained to satisfy
+\verb|p_f(u1,...,uk,X)|.
+
+As a special case, the concretion operation is treated as if it was defined as follows:
+\begin{verbatim}
+X @ a = Y :- a\Y = X.
+\end{verbatim}
+
+Likewise, \aprolog also allows for constant definitions
+\begin{verbatim}
+cnst c = t.
+c = u.
+\end{verbatim}
+and during flattening, any occurrences of constants are replaced by
+their definitions.  Such constant definitions can be viewed as if they
+were zero-argument function definitions.
+
+This informal description is stated more carefully in the rest of this
+section.
+
+\newcommand{\gflat}[1]{\mathcal{G}\SB{#1}}
+\newcommand{\dflat}[1]{\mathcal{D}\SB{#1}}
+\newcommand{\declflat}[1]{\SB{#1}}
+\newcommand{\tflat}[4]{#1 \Rightarrow #2,#3,#4}
+\newcommand{\pred}{\mathsf{pred}}
+\newcommand{\func}{\mathsf{func}}
+
+\paragraph{Term translation} Terms are translated as follows:
+
+The first part of the result is a set of variables, the second is a
+goal, and the third is the translated term.  The variables and goal
+constrain the term, and are added as existentially quantified and
+conjunctive constraints if the term is inside a goal formula, or
+universally quantified and implicative constraints if the term is
+inside a definite clause.
+
+\[\begin{array}{c}
+\infer{\tflat{c}{\emptyset}{\mathsf{true}}{c}}{}
+\quad
+\infer{\tflat{f(t_1,\ldots,t_n)}{S_1\cup \cdots \cup S_n}{G_1 \andd
+    \cdots \andd G_n}{f(t_1',\ldots,t_n')}}{\text{$f$ a constructor} &
+\tflat{t_1}{S_1}{G_1}{t_1'} & \cdots & \tflat{t_n}{S_n}{G_n}{t_n'}}
+\smallskip\\
+\infer{\tflat{f(t_1,\ldots,t_n)}{S_1\cup \cdots \cup S_n \cup \{X\}}{G_1 \andd
+    \cdots \andd G_n \andd p_f(t_1',\ldots,t_n',X)}{X}}{\text{$f$ a defined function} &
+\tflat{t_1}{S_1}{G_1}{t_1'} & \cdots & \tflat{t_n}{S_n}{G_n}{t_n'}}
+\smallskip\\
+\infer{\tflat{a}{\emptyset}{\mathsf{true}}{a}}{}
+\quad
+\infer{\tflat{\pi \cdot X}{\emptyset}{\mathsf{true}}{\pi\cdot X}}{}
+\quad
+\infer{\tflat{a \abs t}{S}{G}{a\abs t'}}{\tflat{t}{S}{G}{t'}}
+\smallskip\\
+\infer{\tflat{t\conc a}{S\cup\{X\}}{G \andd a \abs X = t'}{X}}{\tflat{t}{S}{G}{t'}}
+\end{array}\]
+
+\paragraph{Goal and definite clause translations}
+
+Formulas are translated as follows:
+\begin{eqnarray*}
+  \gflat{\mathsf{true}} &=& \mathsf{true}\\
+  \gflat{G_1 \andd G_2} &=& \gflat{G_1} \andd \gflat{G_2}\\
+  \gflat{G_1 \orr G_2} &=& \gflat{G_1} \orr \gflat{G_2}\\
+  \gflat{D \impp G} &=& \dflat{D} \impp \gflat{G}\\
+\gflat{G \to G_1 | G_2} &=& \gflat{G} \to \gflat{G_1} | \gflat{G_2}\\
+\gflat{!} &=& !\\
+\gflat{\mathsf{not}(G)} &=& \mathsf{not}(\gflat{G})\\
+  \gflat{\exists X{:}\tau.~G} &=& \exists X{:}\tau.~\gflat{G}\\
+  \gflat{\forall X{:}\tau.~G} &=& \forall X{:}\tau.~\gflat{G}\\
+  \gflat{\new a{:}\nu.~G} &=& \new a{:}\nu.~\gflat{G}\\
+  \gflat{t_1 = t_2} &=& \exists X_1,\ldots,X_n.~G \andd t_1' = t_2'\\
+&&  \quad \text{where }\tflat{(t_1,t_2)}{\{X_1,\ldots,X_n\}}{G}{(t_1',t_2')}\\
+  \gflat{t_1 ~\mathsf{is}~ t_2} &=& \exists X_1,\ldots,X_n.~G \andd t_1' ~\mathsf{is}~ t_2'\\
+&&  \quad \text{where }\tflat{(t_1,t_2)}{\{X_1,\ldots,X_n\}}{G}{(t_1',t_2')}\\
+  \gflat{a \fresh t} &=& \exists X_1,\ldots,X_n.~G \andd a \fresh t'\\
+&&  \quad \text{where }\tflat{t}{\{X_1,\ldots,X_n\}}{G}{t}\\
+\gflat{p(t_1,\ldots,t_n)} &=& \exists{X_1,\ldots,X_m}.~G \andd
+p(t_1',\ldots,t_n') \\
+&&\quad\text{where }
+\tflat{(t_1,\ldots,t_n)}{\{X_1,\ldots,X_m\}}{G}{(t_1',\ldots,t_n')}
+\end{eqnarray*}
+\begin{eqnarray*}
+\dflat{\mathsf{true}} &=& \mathsf{true}\\
+\dflat{D_1\andd D_2} &=& \dflat{D_1}\andd\dflat{D_2}\\
+\dflat{G\impp D} &=& \gflat{G} \impp \dflat{D}\\
+\dflat{\forall X{:}\tau.~D} &=& \forall X{:}\tau.~\dflat{D}\\
+\dflat{\new a{:}\nu.~D} &=& \new a{:}\nu.~\dflat{D}\\
+\dflat{p(t_1,\ldots,t_n)} &=& \forall{X_1,\ldots,X_m}.~G \impp
+p(t_1',\ldots,t_n') \\
+&&\quad\text{where }
+\tflat{(t_1,\ldots,t_n)}{\{X_1,\ldots,X_m\}}{G}{(t_1',\ldots,t_n')}\\
+\dflat{f(t_1,\ldots,t_n) = t} &=& \forall {X_1,\ldots,X_m}.~G \impp
+p_f(t_1',\ldots,t_m',t')\\
+&&\quad\text{where }
+\tflat{(t_1,\ldots,t_n,t)}{\{X_1,\ldots,X_m\}}{G}{(t_1',\ldots,t_n',t')}
+\end{eqnarray*}
+Notice that atomic goal formulas $p(\vec{t})$ are translated so as to require
+solving the subgoals arising from any occurrence of defined functions
+in the arguments $\vec{t}$ before attempting to solve $p(\vec{t})$;
+conversely, atomic definite clause formulas $p(\vec{t})$ are translated
+to implications so that the translated head clause will match goals
+$p(\vec{u})$ that unify up to the sites of the defined functions, and
+the subgoals constraining the variables representing the function
+values must then be solved.
+
+\paragraph{Declaration translation}
+Declarations are translated as follows:
+\begin{eqnarray*}
+\declflat{\func~f(\tau_1,\ldots,\tau_n) = \tau.} &=&
+\pred~p_f(\tau_1,\ldots,\tau_n,\tau).\\
+&& \func~f(\tau_1,\ldots,\tau_n) = \tau.\\
+&& f(X_1,\ldots,X_n) = X \ent p_f(X_1,\ldots,X_n,X).\\
+\declflat{\pred~p(\tau_1,\ldots,\tau_n).} &=&
+\pred~p(\tau_1,\ldots,\tau_n).\\
+\declflat{D.} &=& \dflat{D}.
+\end{eqnarray*}
+
+The $\func$ declaration, with its single rule defining the function $f$
+via $p_f$, is retained for typechecking and interactive evaluation.
+
+
+\end{document}
