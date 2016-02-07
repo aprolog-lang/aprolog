@@ -33,7 +33,6 @@ let exists_quantifys =
 let and_list = List.fold_left (fun g h -> And(g,h)) True;;
 
 
-
 let make_pred_decl sym tys = 
     {pos=None;rdecl=PredDecl(sym, tys,false,false )};;
 let make_abbrev_decl sym tys = 
@@ -266,10 +265,11 @@ let add_generators sg tcenv test =
 
 let rename_neq = rename_sym "neq_";;
 
-
+let rename_fresh = rename_sym "fresh_";;
+  
 let rec neq_call ty tX tY = 
   match ty with
-    NameTy nty -> Fresh(None,tX,tY)
+    NameTy (Root sym) -> Atomic(Root(rename_fresh sym),[Pair(tX,tY)])
   | UnitTy -> False
   | IntTy| BoolTy | CharTy -> False (* TODO: Fix *)
   | PairTy(t1,t2) -> 
@@ -351,11 +351,13 @@ let generate_neqs sg =
   decls @ decls' @ clauses @ clauses'
 ;;
 
-
-
+let rename_eq = rename_sym "eq_";;
+  
 let rec nfresh_call f nty ty vX vY = 
   match ty with
-    NameTy (Root nty') -> if nty = nty' then Eq(None,vX,vY) else False
+  | NameTy (Root nty') ->
+     if nty = nty' then Atomic(Root(rename_eq nty),[Pair(vX,vY)])
+     else False
   | UnitTy -> False
   | IntTy| BoolTy | CharTy -> False
   | PairTy(t1,t2) -> 
@@ -427,6 +429,37 @@ let generate_nfreshs sg =
   decls @ decls' @ clauses @ clauses'
 ;;
 
+let generate_freshs sg =
+  let make_fresh_decl nty =
+    let nT = NameTy(Root(nty)) in
+    make_pred_decl (get_base (rename_fresh nty)) [PairTy(nT,nT)] in
+  let make_fresh_clause nty = 
+    let vX = Var(Var.mkvar("X")) in
+    let vY = Var(Var.mkvar("Y")) in
+    let nT = NameTy(Root(nty)) in
+    make_clause_decl (Implies(Fresh(Some(nT,nT),vX,vY),Atomic(Root(rename_fresh nty),[Pair(vX,vY)])))
+  in
+  let ntys = get_nametype_syms sg in 
+  let decls = List.map make_fresh_decl ntys in
+  let clauses = List.map make_fresh_clause ntys in
+  decls @ clauses
+
+let generate_eqs sg =
+  let make_eq_decl nty =
+    let nT = NameTy(Root(nty)) in
+    make_pred_decl (get_base (rename_eq nty)) [PairTy(nT,nT)] in
+  let make_eq_clause nty = 
+    let vX = Var(Var.mkvar("X")) in
+    let vY = Var(Var.mkvar("Y")) in
+    let nT = NameTy(Root(nty)) in
+    make_clause_decl (Implies(Eq(Some(nT),vX,vY),Atomic(Root(rename_eq nty),[Pair(vX,vY)])))
+  in
+  let ntys = get_nametype_syms sg in 
+  let decls = List.map make_eq_decl ntys in
+  let clauses = List.map make_eq_clause ntys in
+  decls @ clauses
+
+            
 (* Generates subgoal forallstar[[ty]](P)  *)
 
 let rename_forallstar = rename_sym "forallstar_";;
@@ -528,6 +561,7 @@ let pattern_complement_maker dtys constrs =
   in compl,compls
 ;;
 
+
 let pattern_complement sg pat ty = 
   let dtys = get_datatype_syms sg in
   let constrs = get_constructors sg dtys in
@@ -589,7 +623,7 @@ let rec negate_goal g =
   | Fresh(Some(NameTy(Root(nty)),ty),t1,t2) -> nfresh_call rename_nfresh nty ty t1 t2
   | Guard(g,g1,g2) -> And(Or(negate_goal g, negate_goal g1),Or(g,negate_goal g2))
   | _ -> Util.impos "generate_not"
-	;;
+;;
 
 let rec negate_test = function
   | Implies(h,g) -> Implies(h,negate_goal g)
@@ -604,7 +638,280 @@ let check_well_quantified clauses =
   List.iter check_well_quantified clauses
 ;;
   
+let useful_clause clause =
+  match clause.rdecl with
+    ClauseDecl(True) -> false
+  | _ -> true
+;;  
 
+let print_sub sub =
+  print_string " unify res: ";
+  Printer.print_to_channel (Varmap.pp_map pp_term) sub stdout
+;;		     
+			   
+let unify_term_pair (t1,t2) =
+  let t1' = freshen_fvs t1 |> fill_holes in
+  let t2' = freshen_fvs t2 |> fill_holes in
+  (if !Flags.debug then
+       (Printer.print_to_channel pp_term t1' stdout;
+     	print_string " @ ";
+     	Printer.print_to_channel pp_term t2' stdout));
+  match t1',t2' with
+  | Implies(g1,h1),Implies(g2,h2) ->
+     (match unify_linear h1 h2 with
+	Some(sub) -> if !Flags.debug then print_sub sub;
+		     Some (apply_tmsub sub (Implies(And(g1,g2),h1)))
+      | None -> None)
+  | atom, Implies(g,h) | Implies(g,h), atom ->
+     (match unify_linear atom h with
+	Some(sub) -> if !Flags.debug then print_sub sub;
+		     Some (apply_tmsub sub (Implies(g,h)))
+      | None -> None)
+  | atom1, atom2 ->
+     (match unify_linear atom1 atom2 with
+       Some(sub) -> if !Flags.debug then print_sub sub; Some (apply_tmsub sub atom1)
+      | None -> None)       
+;;
+		
+let unify_clause_pair (c1,c2) =
+  match (c1.rdecl,c2.rdecl) with
+    ClauseDecl(t1),ClauseDecl(t2) ->
+    match unify_term_pair (t1,t2) with
+      Some t -> Some {pos=None;rdecl=ClauseDecl t}
+    | None -> None
+;;	       
+
+exception Success						
+exception Failure
+
+let empty_index = Index.create 1			     
+
+(* type stats = {tot_cls: int; sub_cls: int} *)
+
+let sub_counter = ref 0
+
+let reset_sub_counter () = sub_counter := 0                    
+                    
+(* let init_stats () = ref {tot_cls = 0; sub_cls = 0} *)
+
+let incr_sub_counter () = sub_counter := !sub_counter + 1
+
+let unwrap_clause clause =
+  match clause.rdecl with
+    ClauseDecl(term) -> term
+  
+exception Not_equivalent of string
+
+(* TODO: I'm not sure about = *)
+let are_equiv_ty ty1 ty2 =
+  let rec h (type1,type2) var_ctx =
+    match type1,type2 with
+    | VarTy(x),VarTy(y) ->
+      if Varmap.mem x var_ctx then
+        if Var.eq (Varmap.find x var_ctx) y then var_ctx
+        else raise (Not_equivalent ("type mismatch: " ^ (Var.to_string x) ^ " != "
+                                    ^ (Var.to_string y)))
+      else Varmap.add x y var_ctx
+    | IdTy(id),IdTy(id') ->
+       if id = id' then var_ctx
+       else raise (Not_equivalent ("type mismatch: " ^ (p2s id) ^ " != " ^ (p2s id')))
+    | NameTy(ns),NameTy(ns') ->
+       if ns = ns' then var_ctx
+       else raise (Not_equivalent ("type mismatch: " ^ (p2s ns) ^ " != " ^ (p2s ns')))
+    | DataTy(ds,tys),DataTy(ds',tys') ->
+       if ds = ds' then
+         List.fold_left (fun vctx (t,u) -> h (t,u) vctx) var_ctx (List.combine tys tys')
+       else raise (Not_equivalent ("type mismatch: " ^ (p2s ds) ^ " != " ^ (p2s ds')))
+    | UnderscoreTy,UnderscoreTy 
+    | IntTy,IntTy 
+    | CharTy,CharTy
+    | BoolTy,BoolTy
+    | PropTy,PropTy
+    | UnitTy,UnitTy -> var_ctx
+    | ArrowTy(ty1,ty2),ArrowTy(ty1',ty2')
+    | PairTy(ty1,ty2),PairTy(ty1',ty2') 
+    | AbsTy(ty1,ty2),AbsTy(ty1',ty2') -> h (ty1,ty1') var_ctx |> h (ty2,ty2')
+    | ListTy(ty),ListTy(ty') -> h (ty,ty') var_ctx
+    | _ -> raise (Not_equivalent "type mismatch") 
+  in
+  try
+    h (ty1,ty2) Varmap.empty;
+    true
+  with
+    Not_equivalent msg -> (* print_string msg; print_newline; *) false
+;;
+                            
+let rec are_equiv_cl c1 c2 =
+  let c1 = unwrap_clause c1 in
+  let c2 = unwrap_clause c2 in
+  let h2 x y map =
+    if Varmap.mem x map then
+      if Var.eq (Varmap.find x map) y then map
+      else raise (Not_equivalent ("names/vars " ^ Var.to_string x ^ " != " ^ Var.to_string y))
+    else Varmap.add x y map in
+  let rec h1 (c1,c2) (var_ctx,name_ctx) =
+    (* print_string ("h1: " ^ (t2s c1) ^ " " ^ (t2s c2) ^ "\n"); *)
+    match c1,c2 with
+      Var x, Var y -> (h2 x y var_ctx,name_ctx)
+    | Name a, Name b -> (var_ctx,h2 a b name_ctx)
+    | Abs(a,t),Abs(b,u) | Conc(t,a),Conc(u,b) -> h1 (Name a,Name b) (var_ctx,name_ctx) |> h1 (t,u)
+    | Unit,Unit | Nil,Nil | True,True | False,False | Cut,Cut -> (var_ctx,name_ctx)
+    | Atomic(f,ts), Atomic(g,us) ->
+       (* TODO: sym_eq f g *)
+     if f = g && List.length ts = List.length us
+     then
+       List.combine ts us |>
+         List.fold_left
+           (fun ctxs tu -> h1 tu ctxs)
+           (var_ctx,name_ctx)
+     else raise (Not_equivalent ("atomic: " ^ (t2s c1) ^ " != " ^ (t2s c2)))
+  | Not(t1),Not(t2) -> h1 (t1,t2) (var_ctx,name_ctx)
+  | Pair(t1,t2),Pair(u1,u2)
+  | Cons(t1,t2),Cons(u1,u2)
+  | And(t1,t2),And(u1,u2)
+  | Or(t1,t2),Or(u1,u2)
+  | Is(t1,t2),Is(u1,u2)
+  | App(t1,t2),App(u1,u2)
+  | EUnify(t1,t2),EUnify(u1,u2)
+  | Fresh (None,t1,t2),Fresh (None,u1,u2) 
+  | Implies(t1,t2),Implies(u1,u2) -> h1 (t1,u1) (var_ctx,name_ctx) |> h1 (t2,u2)
+  | Guard(t1,t2,t3),Guard(u1,u2,u3)
+  | Subst(t1,t2,t3),Subst(u1,u2,u3) ->
+     h1 (t1,u1) (var_ctx,name_ctx) |> h1 (t2,u2) |>  h1 (t3,u3)
+  | Forall(v1,ty1,t),Forall(v2,ty2,u)
+  | Exists(v1,ty1,t),Exists(v2,ty2,u)
+  | Lambda(v1,ty1,t),Lambda(v2,ty2,u) ->
+     if are_equiv_ty ty1 ty2 then h1 (Var v1,Var v2) (var_ctx,name_ctx) |> h1 (t,u)
+     else raise (Not_equivalent "type mismatch")
+  | New(v1,ty1,t),New(v2,ty2,u) -> 
+     if are_equiv_ty ty1 ty2 then h1 (Name v1,Name v2) (var_ctx,name_ctx) |> h1 (t,u)
+     else raise (Not_equivalent "type mismatch")
+  | Fresh(Some(ty1,ty2),t1,t2),Fresh(Some(ty1',ty2'),u1,u2)
+       when are_equiv_ty ty1 ty1' && are_equiv_ty ty2 ty2' -> h1 (t1,u1) (var_ctx,name_ctx) |> h1 (t2,u2)
+  | Eq(Some ty,t1,t2),Eq(Some ty',u1,u2) when are_equiv_ty ty ty' ->
+     h1 (t1,u1) (var_ctx,name_ctx) |> h1 (t2,u2)
+  | Transpose (a1,b1,t),Transpose(a2,b2,u) ->
+     h1 (Name a1,Name a2) (var_ctx,name_ctx) |> h1 (Name b1,Name b2) |> h1 (t,u)
+  | _ -> raise (Not_equivalent ("catchall " ^ (t2s c1) ^ " " ^ (t2s c2)))
+  in
+  try
+    h1 (c1,c2) (Varmap.empty,Varmap.empty);
+    if !Flags.debug then print_endline ((t2s c1) ^ " is equivalent to\n" ^ (t2s c2));
+    incr_sub_counter ();
+    true
+  with
+    Not_equivalent msg -> (* print_string msg; print_newline (); *) false
+;;
+
+
+let rec contains_disgiunction = function
+      Atomic(_) | True | False -> false
+    | Or(_) -> true
+    | And(t,u)
+    | Fresh(_,t,u)
+    | Implies(t,u) -> contains_disgiunction u || contains_disgiunction u
+    | Forall(_,_,tm) | Exists(_,_,tm) | New(_,_,tm) -> contains_disgiunction tm
+    (* TODO: add other cases *)
+    | _ -> false                                                                  
+;;
+
+exception Prepare_exc of string;;  
+  
+let prepare4subsumption tm =
+  let rec inner = function
+      Atomic(x) -> [Atomic(x)]
+    | Or(g1,g2) -> (inner g1) @ (inner g2)
+    | And(g1,g2) -> Util.allpairs (inner g1) (inner g2) |>
+		      List.map (fun (x,y) -> And(x,y))
+    | Forall(v,ty,t) ->
+       if contains_disgiunction t
+       then raise (Prepare_exc "Impossible to remove disgiunction from forall in body")
+       else List.map (fun x -> Forall(v,ty,x)) (inner t)
+    | New(v,ty,t) -> raise (Prepare_exc "inner: new quantifier not yet handled")
+    | Exists(v,ty,t) -> raise (Prepare_exc "inner: exists quantifier not yet handled")
+    | t -> raise (Prepare_exc ("inner: not allowed in subsumption: " ^ (t2s t)))
+  in
+  match tm with 
+    Atomic _ -> tm
+  | Implies(b,h) -> List.map (fun g -> Implies(g,h)) (inner b) |> and_list
+  | Forall(v,ty,t) -> List.map (fun g -> Forall(v,ty,g)) (inner t) |> and_list
+  | _ -> raise (Prepare_exc (" unexpected case " ^ (t2s tm)))
+;; 
+
+                                              
+let rec is_subsumed sg clause clauses =
+  let bound = 10 in
+  let report exc goal =
+    print_endline ("\nSUBSUMPTION: " ^ (Printexc.to_string exc) ^
+                     " goal:\n" ^ (t2s goal) ^ ".")
+  in
+  let tc_and_translate_g goal =
+    let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal goal) in
+    Translate.translate_goal sg tcenv g
+  in
+  let solve goal =
+    Var.reset_var();
+    let names = Varset.elements (I.fas_g goal) in
+    Boundsolve.boundsolve Isym.pp_term_sym sg empty_index Dtrue goal names
+                          (fun _ _ -> raise Success) bound (Subst.id,[]);
+  in
+  let clause = unwrap_clause clause in
+  let clauses = List.map unwrap_clause clauses in
+  let prog = and_list clauses in
+  try
+    let goal = tc_and_translate_g (Implies (prog,prepare4subsumption clause))
+               |> I.add_forall_right in
+    if !Flags.debug then print_endline ("subsumption goal\n" ^
+                                          (Printer.print_to_string
+                                             (I.pp_goal Isym.pp_term_sym) goal));
+    solve goal;
+    raise Failure
+  with
+  | Success -> if !Flags.debug then
+                 (print_endline ((t2s clause) ^ " is subsumed by:");
+                  List.iter (fun cl1 -> print_endline (t2s cl1)) clauses);
+               incr_sub_counter (); true
+  | Failure -> false
+  | (Prepare_exc msg) as e-> if !Flags.debug then report e clause; false
+  | e -> report e clause; false
+;;
+
+let rec smart_add_clause sg clause = function
+    [] -> [clause]
+  | clauses ->
+     if is_subsumed sg clause clauses then clauses
+     else clause ::
+            (List.filter
+               (fun cl ->
+                not (is_subsumed sg cl [clause] || are_equiv_cl cl clause)) clauses)
+;;
+
+let rec unify_clause_pairs sg = function
+    [] -> []
+  | (c1,c2) :: xs ->
+      match unify_clause_pair (c1,c2) with
+	Some c -> (if !Flags.debug then
+		    (print_string " new clause: ";
+		    Printer.print_to_channel pp_decl c stdout;
+		    print_newline ()));
+		  smart_add_clause sg c (unify_clause_pairs sg xs)
+		   (* c :: (unify_clause_pairs sg xs) *)
+	| None -> (if !Flags.debug then print_string " failed. \n");
+		  unify_clause_pairs sg xs
+;;
+
+let make_not_decl (p,tys) = 
+  make_pred_decl (get_base (rename_not p)) tys
+;;
+
+let get_pred_decl (p,ty) = 
+  let (tys,rty) = unpack_ty ty in
+  if rty = PropTy
+  then Some (p,tys)
+  else None
+;;
+
+(* TODO: adapt main call to generate_negative_{decls,defns} and remove the function above *)
 (* Generates clauses not_p1...not_pn and then defines not_p as conjunction of the not_pi's *)
 let generate_negation sg = 
   let make_not_decl (p,tys) = 
@@ -648,3 +955,56 @@ let generate_negation sg =
   decls@decls'
 ;;
 
+
+  
+let generate_negative_decls sg positive_preds =
+  let predicate_decls = Util.map_partial get_pred_decl !(sg.tdecls) in
+  let decls = List.filter (fun (p,ty) -> List.mem (get_base p) positive_preds) predicate_decls in
+  List.map make_not_decl decls
+            
+let generate_negative_defns sg positive_preds =
+  let stats_buffer = ref "" in
+  let _ = check_well_quantified !(sg.clauses) in 
+  let get_definition (p,tys) = 
+    (p,tys,List.rev (Util.collect (get_clauses p [] True) !(sg.clauses))) in
+  let predicate_decls = Util.map_partial get_pred_decl !(sg.tdecls) in
+  let negate_predicate (p,tys,clauses) =
+    reset_sub_counter ();
+    let not_p = rename_not p in
+    (if !Flags.debug then print_string ("\nNEGATING " ^ (Printer.print_to_string pp_sym p) ^ "\n"));
+    let negate_clause (_,pats,g) =
+      let negated_clauses =
+	(List.map
+	   (fun pat -> make_clause_decl (Atomic(Root(Base(get_base not_p)),pat)))
+	   (pattern_complements sg pats tys))
+	@[make_clause_decl (Implies(negate_goal g,Atomic(Root(Base(get_base not_p)),pats)))]
+      in
+      (List.map (fun clause ->
+		match clause.rdecl with
+		| ClauseDecl(c) -> {pos=None;rdecl=ClauseDecl (simplify c)}
+		| _ -> clause) negated_clauses) |> List.filter useful_clause 
+    in
+    let clauses_list = List.map negate_clause clauses in
+    let minimal_clauses = List.fold_left
+                            (fun l1 l2 ->
+		             if !Flags.debug then print_string "ITERATION\n";
+		             let cpair = Util.allpairs l1 l2 in
+		             let res = unify_clause_pairs sg cpair in
+		             if !Flags.debug then
+		               (print_string "ITER RES:\n";
+			        List.iter (fun decl ->
+				           print_endline (d2s decl))
+				          res);
+                             res)
+		            (List.hd clauses_list) (List.tl clauses_list)
+    in
+    stats_buffer := !stats_buffer ^ "STATS pred " ^ (get_base not_p) ^ " :\n" ^
+                      "clauses subsumed: " ^ (string_of_int !sub_counter) ^ "\n" ^ 
+                        "resulting clause number: " ^
+                          (string_of_int (List.length minimal_clauses)) ^ "\n";
+    minimal_clauses
+  in
+  let decls = List.filter (fun (p,ty) -> List.mem (get_base p) positive_preds) predicate_decls in
+  let defns = List.map get_definition decls in
+  (Util.collect negate_predicate defns),!stats_buffer
+;;  

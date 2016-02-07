@@ -19,7 +19,9 @@ val generate_terms : bool ref;;
 val generate_negation : bool ref;;
 val negelim : bool ref;;
 val simplify_clauses : bool ref;;
-val linearize : bool ref;;
+val linearize : bool ref;; 
 val quantify : bool ref;;
 val skip_occurs_check : bool ref;;
+val ne_simpl : bool ref;;
 val custom_check : bool ref;;
+

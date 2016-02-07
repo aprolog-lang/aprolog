@@ -21,6 +21,7 @@ examples : bin/aprolog
 clean : 
 	rm -rf *~
 	make -C src clean
+	make -C examples clean
 
 spotless : clean
 	rm -f src/config.ml

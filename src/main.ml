@@ -7,16 +7,21 @@ open Util;;
 open Tcenv;;
 open Config;;
 open Types;;
+module Dg = Dependency_graph;;  
 module N = Negelim;;
 
 Random.self_init();;
 
 (* Some global variables for interpreter state *)
-let version = "0.4.0";;
+let version = "0.39";;
 let interactive = ref false;;
 let verbose = ref false;;
 let log = ref false;;
 let errors = ref 0;;
+let dumpfile = ref "";;
+let dump_ne = ref false;;
+let depen_graph = ref Dg.empty;;
+
 let parse_libs_var s = split (fun c -> c = ':') s;;
 lib_dirs := 
    try (parse_libs_var (Sys.getenv "APROLOG_LIBS"))@ !lib_dirs
@@ -119,7 +124,7 @@ let get_decls find_file file =
       decls
   |  None -> print_string (file^": File not found\n"); []
 ;;
-
+  
 (* TODO: Make the constrs data structure be like this intermediate 
    data structure *)
 let simplify fvs (subst,constrs) = (subst,constrs)
@@ -259,19 +264,49 @@ after a #check directive. *)
           else [] in
 	let l2 = 
 	  if(!generate_negation) 
-          then [mkdecl (GenerateDirective("neq"));
-		 mkdecl (GenerateDirective("nfresh"));
-		 mkdecl (GenerateDirective("not"))]
-          else []
-	in l1 @ l2 @ decls
+          then
+            [mkdecl (GenerateDirective("eq"));
+             mkdecl (GenerateDirective("fresh"));
+             mkdecl (GenerateDirective("neq"));
+	     mkdecl (GenerateDirective("nfresh"))]
+          else [] in
+        let l3 =
+          if (not(!ne_simpl) && !generate_negation)
+          then [mkdecl (GenerateDirective("not"))]
+          else [] in
+	l1 @ l2 @ l3 @ decls
     | decl::decls ->
 	decl:: insert_generation(decls)
   in
-  
-  
   sanity_check false decls0;
   insert_generation decls0
     ;;
+
+let open_dump filename =
+  open_out_gen [Open_wronly;Open_append;Open_creat;Open_text] 0o666 filename;;
+
+let get_preds_to_negate test =
+  let neg_preds = Dg.get_negative_preds test in
+  if !Flags.debug
+  then
+    (print_endline ("term to test is : " ^ (t2s test) ^
+                    "\nnegative preds in it are:");
+     String_set.iter (fun neg_pred -> print_string (neg_pred ^ "\n")) neg_preds;
+     print_endline "dependency graph";
+     Dg.print_all_deps !depen_graph;
+     print_newline ());
+  let preds = String_set.fold
+      (fun neg_pred prev ->
+         let len = String.length neg_pred in
+         let pos_pred = String.sub neg_pred 4 (len - 4) in
+         String_set.add pos_pred prev) neg_preds String_set.empty in 
+  let (dep_graph,preds_to_negate) =
+    Dg.get_required_preds preds !depen_graph in
+  if !Flags.debug
+  then (print_endline "predicates to negate:";
+        List.iter (fun pred -> print_string (pred ^ "\n")) preds_to_negate);
+  depen_graph := dep_graph;
+  preds_to_negate
 
 let rec run1 pos decl sg idx = 
   Var.reset_var();
@@ -336,16 +371,16 @@ let rec run1 pos decl sg idx =
 	  (tcenv,p)
         else (tcenv,p) in
 (* Well-quantification pass *)
-      let  (tcenv,p) =  
-	if !Flags.quantify && pos <> None
-        then 
-	  let c = Absyn.well_quantify_prog p in
-	  let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c)  in
-	  if !verbose
-	  then (print_endline "Well-quantified:";
-		Printer.print_to_channel Absyn.pp_term p stdout;
-		print_string ".\n");
-	  (tcenv,p)
+      let  (tcenv,p) =
+        if !Flags.quantify && pos <> None
+        then
+          let c = Absyn.well_quantify_prog p in
+          let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c)  in
+          if !verbose
+          then (print_endline "Well-quantified:";
+        	Printer.print_to_channel Absyn.pp_term p stdout;
+        	print_string ".\n");
+          (tcenv,p)
         else (tcenv,p) in
 (* Simplification pass *)
       let p = 
@@ -358,6 +393,11 @@ let rec run1 pos decl sg idx =
 	     p)
 	else p in
       let sg = Tcenv.add_clause_decl sg p in
+
+      if !ne_simpl then
+        (let updated_dep_graph = Dg.add_clause_deps c !depen_graph in
+        depen_graph := updated_dep_graph);
+        
       (*if !verbose 
       then (Printer.print_to_channel Absyn.pp_term p stdout;
 	    print_string ".\n");*)
@@ -479,25 +519,64 @@ let rec run1 pos decl sg idx =
   | HelpDirective(_) -> (* ignore argument for now *)
       help();
       sg,idx
-  | CheckDirective(name,bound,validity,test1) -> 
-    (* Always check that tests are wellformed. *)
-    (* TODO: Specialize typechecker to tests *)
-    let (tcenv,test2) = Monad.run sg empty_env (Tc.check_test test1) in
-
-    (* Test manipulation if custom_check is false: 
-       * if NF then automatic addition of generators
-       * if NE then renaming of conclusion *)  
-    let test3 = if !custom_check then test2 else
-        (if !Flags.negelim then N.negate_test test2
-         else N.add_generators sg tcenv test2) in
-
+  | CheckDirective(name,bound,validity,test1) ->
+    let tcenv,test4 =
+      if !custom_check then (
+        if !ne_simpl then (
+          let preds_to_negate = get_preds_to_negate test1 in
+          let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
+          if !Flags.debug then
+            (print_endline "negative_decls:";
+             List.iter (fun ndecl -> print_string (d2s ndecl ^ "\n")) neg_decls);
+          let sg = run sg idx neg_decls in
+          let (neg_defns,stats_buffer) =
+            Negelim.generate_negative_defns sg preds_to_negate in
+          if !Flags.debug then
+            (print_string "negative_defns: \n";
+             List.iter (fun ndefn -> print_string (d2s ndefn ^ "\n")) neg_defns);
+          let sg = run sg idx neg_defns in
+          if !dump_ne then 
+            (let out_chan = open_dump !dumpfile in 
+             List.iter (fun d -> Printer.print_to_channel Absyn.pp_decl d out_chan;
+                         output_string out_chan "\n") (neg_decls@neg_defns);
+             close_out out_chan);
+          if !verbose then print_string stats_buffer);
+        Monad.run sg empty_env (Tc.check_test test1)
+      ) else
+        (
+          let (tcenv,test2) = Monad.run sg empty_env (Tc.check_test test1) in
+          let test3 = if !Flags.negelim then N.negate_test test2
+            else N.add_generators sg tcenv test2 in
+          if !ne_simpl then
+            (let preds_to_negate = get_preds_to_negate test3 in
+            let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
+            if !Flags.debug then
+              (print_endline "negative_decls:";
+               List.iter (fun ndecl -> print_string (d2s ndecl ^ "\n")) neg_decls);
+            let sg = run sg idx neg_decls in
+            let (neg_defns,stats_buffer) =
+              Negelim.generate_negative_defns sg preds_to_negate in
+            if !Flags.debug then
+              (print_string "negative_defns: \n";
+               List.iter (fun ndefn -> print_string (d2s ndefn ^ "\n")) neg_defns);
+            let sg = run sg idx neg_defns in
+            if !dump_ne then 
+              (let out_chan = open_dump !dumpfile in 
+               List.iter (fun d -> Printer.print_to_channel Absyn.pp_decl d out_chan;
+                           output_string out_chan "\n") (neg_decls@neg_defns);
+               close_out out_chan);
+            if !verbose then print_string stats_buffer);
+          tcenv,test3
+        );
+    in
+    
     if !Flags.do_checks 
       then 
         if not(!tc_only) && (!errors = 0 || !interactive)
         then (
 	  if !debug || not(!interactive)
           then (print_string ("--------\nChecking for counterexamples to \n"^name^": ");
-	      Printer.print_to_channel Absyn.pp_term test2 stdout;
+	      Printer.print_to_channel Absyn.pp_term test1 stdout;
 	      print_string "\n";
 	      flush stdout
 	      );
@@ -517,14 +596,14 @@ let rec run1 pos decl sg idx =
           )
 	in
 	(try 
-	  let test4 = Translate.translate_test sg tcenv test3 in
+	  let test5 = Translate.translate_test sg tcenv test4 in
 	  if !debug 
 	  then (
 	    Printer.print_to_channel (Internal.pp_test Isym.pp_term_sym) 
-	      test4 stdout;
+	      test5 stdout;
 	    print_string "\n"
 	   );
-	  let fvs = Varset.elements (Internal.fvs_t test4) in
+	  let fvs = Varset.elements (Internal.fvs_t test5) in
 	  flush(stdout);
 	  if not(!verbose) then log_msg("Checking depth");
 	  start_timer2();
@@ -534,8 +613,8 @@ let rec run1 pos decl sg idx =
 	    flush(stdout);
 	    start_timer();
 	    if !Flags.negelim 
-	    then Check.check_ne Isym.pp_term_sym sg idx test4 (init_sc fvs) (-1)
-	    else Check.check Isym.pp_term_sym sg idx test4 (init_sc fvs) (-1);
+	    then Check.check_ne Isym.pp_term_sym sg idx test5 (init_sc fvs) (-1)
+	    else Check.check Isym.pp_term_sym sg idx test5 (init_sc fvs) (-1);
 	    if !verbose then time_msg("")
 	    );
 	  for i = 1 to bound do
@@ -544,8 +623,8 @@ let rec run1 pos decl sg idx =
 	    flush(stdout);
 	    start_timer();
 	    if !Flags.negelim 
-	    then Check.check_ne Isym.pp_term_sym sg idx test4 (init_sc fvs) i
-	    else Check.check Isym.pp_term_sym sg idx test4 (init_sc fvs) i;
+	    then Check.check_ne Isym.pp_term_sym sg idx test5 (init_sc fvs) i
+	    else Check.check Isym.pp_term_sym sg idx test5 (init_sc fvs) i;
 	    
 	    if !verbose then time_msg(""); 
           done;
@@ -570,11 +649,17 @@ let rec run1 pos decl sg idx =
       run sg idx decls, idx
   | GenerateDirective("neq") -> 
       let decls = Negelim.generate_neqs sg in
-       if !debug
+      if !debug
       then (print_string "GENERATED:\n" ;
 	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
 	      print_string "\n") decls;
 	    print_string "END\n");
+      if !dump_ne
+      then (let oc = open_dump !dumpfile in
+            List.iter
+              (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
+              decls;
+            close_out oc);            
       run sg idx decls, idx
   | GenerateDirective("nfresh") -> 
       let decls = Negelim.generate_nfreshs sg in
@@ -583,7 +668,42 @@ let rec run1 pos decl sg idx =
 	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
 	      print_string "\n") decls;
 	    print_string "END\n");
-      run sg idx decls, idx
+       if !dump_ne
+       then (let oc = open_dump !dumpfile in
+             List.iter
+               (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
+               decls;
+             close_out oc);
+       run sg idx decls, idx
+  | GenerateDirective("fresh") ->
+     let decls = Negelim.generate_freshs sg in
+     if !debug
+     then (print_string "GENERATED:\n" ;
+	   List.iter (fun decl -> print_to_channel pp_decl decl stdout;
+	                          print_string "\n") decls;
+	   print_string "END\n");
+     if !dump_ne
+     then (let oc = open_dump !dumpfile in
+           List.iter
+             (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
+             decls;
+           close_out oc);
+     run sg idx decls, idx
+  | GenerateDirective("eq") ->
+     let decls = Negelim.generate_eqs sg in
+     if !debug
+     then (print_string "GENERATED:\n" ;
+	   List.iter (fun decl -> print_to_channel pp_decl decl stdout;
+	                          print_string "\n") decls;
+	   print_string "END\n");
+     if !dump_ne
+     then (let oc = open_dump !dumpfile in
+           List.iter
+             (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
+             decls;
+           close_out oc);
+     run sg idx decls, idx                         
+  (* TODO: after negelim interface is adapted use commented code for generating not *)
   | GenerateDirective("not") -> 
       let decls = Negelim.generate_negation sg in
        if !debug
@@ -591,16 +711,25 @@ let rec run1 pos decl sg idx =
 	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
 	      print_string "\n") decls;
 	    print_string "END\n");
-      run sg idx decls, idx
+       run sg idx decls, idx
+(* | GenerateDirective("not") -> *)
+(*    let defns = Negelim.generate_negated_decls sg in *)
+(*    let sg' = run sg idx defns in *)
+(*     let decls = Negelim.generate_negated_defns sg' in *)
+(*      if !debug *)
+(*     then (print_string "GENERATED:\n" ; *)
+(*           List.iter (fun decl -> print_to_channel pp_decl decl stdout; *)
+(*             print_string "\n") decls; *)
+(*           print_string "END\n"); *)
+(*     run sg' idx decls, idx *)
   | GenerateDirective("forallstar") -> 
       let decls = Negelim.generate_forallstars sg in
-       if !debug
+      if !debug
       then (print_string "GENERATED:\n" ;
 	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
 	      print_string "\n") decls;
 	    print_string "END\n");
       run sg idx decls, idx
-      
 (*
   | NeqDirective(dty,neq_path) -> 
       (* Check that symbol dty is a declared datatype of kind * *)
@@ -705,7 +834,11 @@ let rec toploop sg idx =
       toploop sg idx
 ;;
 
-
+let rec set_dumpfile filename =
+  if Sys.file_exists filename then Sys.remove filename;
+  dumpfile := filename;
+  dump_ne := true
+  
 let main args = 
   (* Banner hard to read because of escapes ... *)
   (* Looks like this
@@ -719,7 +852,7 @@ let main args =
           /   /      /      ((__ 
                             \\__))  
      *)
-let banner = 
+  let banner = 
     "          ______                  \n"^
     "          ||   \\\\    /|          \n"^
     "          ||    )    ||           \n"^
@@ -768,8 +901,29 @@ let banner =
     do_checks := true;
     generate_terms := true
 (*    strict_new_occurs := false*)
-  in 
-  let do_file file = 
+  in
+  let arg_check_ne_simpl () =
+    do_checks := true;
+    negelim := true;
+    extensional_forall := true;
+    horn_clauses_only := false;
+    consistency_check := true;
+    generate_negation := true;
+    simplify_clauses := true;
+    quantify := true;
+    ne_simpl := true
+  in
+  let arg_check_ne_simpl_minus () =
+    do_checks := true;
+    negelim := true;
+    extensional_forall := false;
+    horn_clauses_only := false;
+    consistency_check := true;
+    generate_negation := true;
+    simplify_clauses := true;
+    quantify := true;
+    ne_simpl := true
+  in  let do_file file = 
     print_string ("Reading file "^file^"...\n");
     start_timer();
     let decls0 = 
@@ -819,6 +973,9 @@ let banner =
                ("-check-ne", Arg.Unit(arg_check_negelim), "Check using negation elimination");
                ("-check-ne-minus", Arg.Unit(arg_check_negelim_minus), "Check using negation elimination (without extensional quantification)");
                ("-check-nf",Arg.Unit(arg_check_negfail), "Check using negation as failure");
+               ("-check-ne-simpl", Arg.Unit(arg_check_ne_simpl), "Check using negation elimination with negative predicates simplification (experimental)");
+               ("-check-ne-simpl-minus", Arg.Unit(arg_check_ne_simpl_minus), "Like -check-ne-simpl but without extensional quantification");
+               ("-nd", Arg.String(set_dumpfile), "Dump negative predicates in the specified file");
                ("-cc",Arg.Set(custom_check), "It does not manipulate check directive, letting the user specify generators or negative predicates.");
                ("-a",Arg.Set(interactive), "It enables interactive mode also during specification checking") 
 	     ]

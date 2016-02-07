@@ -76,7 +76,8 @@ val pp_decl : decl printer;;
 val k2s : kind -> string;;
 val t2s : term -> string;;
 val ty2s : ty -> string;;
-
+val d2s : decl -> string;;
+  
 val ftvs    : ty -> Varset.t;;
 
 val fvs : term -> Varset.t;;
@@ -84,10 +85,16 @@ val supp : term -> Varset.t;;
 
 val freshen    : ty -> ty;;
 
-
+(* it freshens all free vars *)
+val freshen_fvs : term -> term;;
+(* it creates a new var for each underscore found *)
+val fill_holes : term -> term;;
+  
 val apply_tysub : ty Varmap.t -> ty -> ty;;
 val apply_tysub_term : ty Varmap.t -> term -> term;;
 
+val apply_tmsub : term Varmap.t -> term -> term;;
+  
 val unpack_ty : ty -> (ty list * ty);;
 
 

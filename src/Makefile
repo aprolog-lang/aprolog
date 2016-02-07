@@ -1,13 +1,16 @@
 ifdef DEBUG
 OCAMLC = ocamlc.opt -g
 SUF = .cmo
+EXT_SUF = .cma
 else 
 ifdef PROF
 OCAMLC = ocamlopt.opt -p
 SUF = .cmx
+EXT_SUF = .cmxa
 else 
 OCAMLC = ocamlopt.opt
 SUF = .cmx
+EXT_SUF = .cmxa
 endif
 endif
 OCAMLDEP = ocamldep
@@ -43,11 +46,14 @@ MODULES = flags     \
 	  eval      \
 	  explain   \
 	  unify     \
-	  negelim   \
           tc        \
 	  runtime   \
 	  solve     \
-	  boundsolve     \
+	  boundsolve \
+	  string_set \
+	  string_map \
+	  dependency_graph \
+	  negelim   \
 	  check
 INTERFACES = flags  \
 	  util   \
@@ -76,27 +82,31 @@ INTERFACES = flags  \
 	  eval      \
 	  explain   \
 	  unify     \
-	  negelim   \
 	  tc        \
 	  runtime   \
 	  solve     \
-	  boundsolve     \
+	  boundsolve \
+	  string_set \
+	  string_map \
+	  dependency_graph \
+	  negelim   \
           check
 
+EXT_MODULES = str
+
 SRCS = $(addsuffix .ml, $(MODULES))
-OBJS = $(addsuffix $(SUF), $(MODULES))
+OBJS =  $(addsuffix $(SUF), $(MODULES))
 ISRCS = $(addsuffix .mli, $(INTERFACES))
 IOBJS = $(addsuffix .cmi, $(INTERFACES))
 GEN = parser.ml parser.mli lexer.ml parser.output
-
-
+EXT_LIBS = $(addsuffix $(EXT_SUF), $(EXT_MODULES))
 
 all : $(IOBJS) $(OBJS) aprolog
 
 include .depend
 
 aprolog: $(IOBJS) $(OBJS) main$(SUF)
-	$(OCAMLC) $(OBJS) main$(SUF) -o $@
+	$(OCAMLC) $(EXT_LIBS) $(OBJS) main$(SUF) -o $@
 
 %.cmi : %.mli
 	$(OCAMLC) -c $< -o $@
