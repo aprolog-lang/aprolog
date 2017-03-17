@@ -628,7 +628,7 @@ let generate_negation sg =
     in
     let notpis = 
       Util.tabulate 
-	(fun i -> get_base (rename_not p) ^ string_of_int i)
+	(fun i -> get_base (rename_not p) ^ "%" ^ string_of_int i)
 	(List.length clauses) in
     let named_clauses = Util.zip notpis clauses in
     let vXs = List.map (fun _ -> Var (Var.mkvar "X")) tys in 
