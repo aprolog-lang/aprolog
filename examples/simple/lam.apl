@@ -105,6 +105,10 @@ beta_reduce (app E1 E2) (app E1' E2) :- beta_reduce E1 E1'.
 beta_reduce (app E1 E2) (app E1 E2') :- beta_reduce E2 E2'.
 beta_reduce (lam (x\E)) (lam (x\E')) :- beta_reduce E E'.
 
+pred beta_nf tm tm.
+beta_nf E1 E3 :- beta_reduce E1 E2, !, beta_nf E2 E3.
+beta_nf E E :- !.
+
 pred beta_expand tm tm.
 beta_expand E' E :- beta_reduce E E'.
 
