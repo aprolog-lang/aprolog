@@ -622,8 +622,8 @@ let rec negate_goal g =
   | Eq(None,_,_) -> failwith "not yet handled"
   | Fresh(Some(NameTy(Root(nty)),ty),t1,t2) -> nfresh_call rename_nfresh nty ty t1 t2
   | Guard(g,g1,g2) -> And(Or(negate_goal g, negate_goal g1),Or(g,negate_goal g2))
-  | _ -> Util.impos "generate_not"
-;;
+  | _ -> Util.impos ("negate_goal: " ^ t2s g)
+	;;
 
 let rec negate_test = function
   | Implies(h,g) -> Implies(h,negate_goal g)
@@ -935,7 +935,7 @@ let generate_negation sg =
     in
     let notpis = 
       Util.tabulate 
-	(fun i -> get_base (rename_not p) ^ string_of_int i)
+	(fun i -> get_base (rename_not p) ^ "%" ^ string_of_int i)
 	(List.length clauses) in
     let named_clauses = Util.zip notpis clauses in
     let vXs = List.map (fun _ -> Var (Var.mkvar "X")) tys in 
