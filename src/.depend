@@ -29,12 +29,15 @@ eval.cmi : subst.cmi internal.cmi
 explain.cmi : types.cmi subst.cmi printer.cmi perm.cmi internal.cmi
 unify.cmi : util.cmi types.cmi tcenv.cmi subst.cmi printer.cmi perm.cmi \
     isym.cmi internal.cmi
-negelim.cmi : tcenv.cmi absyn.cmi
 tc.cmi : var.cmi tcenv.cmi monad.cmi absyn.cmi
 runtime.cmi : unique.cmi isym.cmi internal.cmi absyn.cmi
 solve.cmi : unify.cmi types.cmi printer.cmi isym.cmi internal.cmi index.cmi
 boundsolve.cmi : unify.cmi types.cmi tcenv.cmi printer.cmi isym.cmi \
     internal.cmi index.cmi
+string_set.cmi :
+string_map.cmi : string_set.cmi
+dependency_graph.cmi : string_set.cmi absyn.cmi
+negelim.cmi : tcenv.cmi dependency_graph.cmi absyn.cmi
 check.cmi : unify.cmi types.cmi tcenv.cmi solve.cmi printer.cmi isym.cmi \
     internal.cmi index.cmi
 flags.cmo : flags.cmi
@@ -66,9 +69,9 @@ fixity.cmx : fixity.cmi
 nstbl.cmo : util.cmi printer.cmi nstbl.cmi
 nstbl.cmx : util.cmx printer.cmx nstbl.cmi
 absyn.cmo : varset.cmi varmap.cmi var.cmi util.cmi types.cmi printer.cmi \
-    pos.cmi nstbl.cmi isym.cmi internal.cmi fixity.cmi absyn.cmi
+    pos.cmi nstbl.cmi isym.cmi internal.cmi flags.cmi fixity.cmi absyn.cmi
 absyn.cmx : varset.cmx varmap.cmx var.cmx util.cmx types.cmx printer.cmx \
-    pos.cmx nstbl.cmx isym.cmx internal.cmx fixity.cmx absyn.cmi
+    pos.cmx nstbl.cmx isym.cmx internal.cmx flags.cmx fixity.cmx absyn.cmi
 lineno.cmo : util.cmi lineno.cmi
 lineno.cmx : util.cmx lineno.cmi
 lexer.cmo : util.cmi parser.cmi nstbl.cmi lineno.cmi fixity.cmi
@@ -111,10 +114,6 @@ unify.cmo : var.cmi util.cmi types.cmi translate.cmi subst.cmi printer.cmi \
     perm.cmi isym.cmi internal.cmi flags.cmi absyn.cmi unify.cmi
 unify.cmx : var.cmx util.cmx types.cmx translate.cmx subst.cmx printer.cmx \
     perm.cmx isym.cmx internal.cmx flags.cmx absyn.cmx unify.cmi
-negelim.cmo : varset.cmi var.cmi util.cmi types.cmi tcenv.cmi nstbl.cmi \
-    internal.cmi flags.cmi absyn.cmi negelim.cmi
-negelim.cmx : varset.cmx var.cmx util.cmx types.cmx tcenv.cmx nstbl.cmx \
-    internal.cmx flags.cmx absyn.cmx negelim.cmi
 tc.cmo : varset.cmi varmap.cmi var.cmi util.cmi types.cmi translate.cmi \
     tcenv.cmi subst.cmi printer.cmi nstbl.cmi monad.cmi isym.cmi flags.cmi \
     explain.cmi absyn.cmi tc.cmi
@@ -137,12 +136,26 @@ boundsolve.cmo : varset.cmi var.cmi util.cmi unify.cmi types.cmi tcenv.cmi \
 boundsolve.cmx : varset.cmx var.cmx util.cmx unify.cmx types.cmx tcenv.cmx \
     subst.cmx runtime.cmx printer.cmx perm.cmx nstbl.cmx isym.cmx \
     internal.cmx index.cmx eval.cmx absyn.cmx boundsolve.cmi
+string_set.cmo : string_set.cmi
+string_set.cmx : string_set.cmi
+string_map.cmo : string_set.cmi string_map.cmi
+string_map.cmx : string_set.cmx string_map.cmi
+dependency_graph.cmo : string_set.cmi string_map.cmi nstbl.cmi absyn.cmi \
+    dependency_graph.cmi
+dependency_graph.cmx : string_set.cmx string_map.cmx nstbl.cmx absyn.cmx \
+    dependency_graph.cmi
+negelim.cmo : varset.cmi varmap.cmi var.cmi util.cmi types.cmi translate.cmi \
+    tcenv.cmi tc.cmi subst.cmi printer.cmi nstbl.cmi monad.cmi isym.cmi \
+    internal.cmi index.cmi flags.cmi dependency_graph.cmi boundsolve.cmi \
+    absyn.cmi negelim.cmi
+negelim.cmx : varset.cmx varmap.cmx var.cmx util.cmx types.cmx translate.cmx \
+    tcenv.cmx tc.cmx subst.cmx printer.cmx nstbl.cmx monad.cmx isym.cmx \
+    internal.cmx index.cmx flags.cmx dependency_graph.cmx boundsolve.cmx \
+    absyn.cmx negelim.cmi
 check.cmo : varset.cmi var.cmi util.cmi unify.cmi types.cmi subst.cmi \
-    solve.cmi perm.cmi isym.cmi internal.cmi flags.cmi boundsolve.cmi \
-    check.cmi
+    solve.cmi perm.cmi isym.cmi internal.cmi boundsolve.cmi check.cmi
 check.cmx : varset.cmx var.cmx util.cmx unify.cmx types.cmx subst.cmx \
-    solve.cmx perm.cmx isym.cmx internal.cmx flags.cmx boundsolve.cmx \
-    check.cmi
+    solve.cmx perm.cmx isym.cmx internal.cmx boundsolve.cmx check.cmi
 parser.cmo : var.cmi util.cmi types.cmi pos.cmi nstbl.cmi lineno.cmi \
     fixity.cmi absyn.cmi parser.cmi
 parser.cmx : var.cmx util.cmx types.cmx pos.cmx nstbl.cmx lineno.cmx \
@@ -153,8 +166,10 @@ lexer.cmx : util.cmx parser.cmx nstbl.cmx lineno.cmx fixity.cmx
 main.cmo : varset.cmi varmap.cmi var.cmi util.cmi unify.cmi types.cmi \
     translate.cmi tcenv.cmi tc.cmi solve.cmi runtime.cmi printer.cmi pos.cmi \
     perm.cmi parser.cmi nstbl.cmi negelim.cmi monad.cmi lineno.cmi lexer.cmo \
-    isym.cmi internal.cmi index.cmi flags.cmi config.cmo check.cmi absyn.cmi
+    isym.cmi internal.cmi index.cmi flags.cmi dependency_graph.cmi config.cmo \
+    check.cmi absyn.cmi
 main.cmx : varset.cmx varmap.cmx var.cmx util.cmx unify.cmx types.cmx \
     translate.cmx tcenv.cmx tc.cmx solve.cmx runtime.cmx printer.cmx pos.cmx \
     perm.cmx parser.cmx nstbl.cmx negelim.cmx monad.cmx lineno.cmx lexer.cmx \
-    isym.cmx internal.cmx index.cmx flags.cmx config.cmx check.cmx absyn.cmx
+    isym.cmx internal.cmx index.cmx flags.cmx dependency_graph.cmx config.cmx \
+    check.cmx absyn.cmx

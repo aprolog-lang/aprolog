@@ -117,3 +117,6 @@ val subst_name_t : name -> name -> 'a test -> 'a test;;
 val subst_name_h : name -> name -> 'a hyp -> 'a hyp;;
 
 val eq : 'a equal -> 'a term equal;;
+
+val add_forall : 'a goal -> 'a goal;;
+val add_forall_right : 'a goal -> 'a goal;;

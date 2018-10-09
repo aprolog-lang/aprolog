@@ -555,7 +555,6 @@ let rec subst_name_t a b t =
  
 and subst_name_h a b h = 
   let h0 = subst_name a b in
-  let h1 = subst_name_t a b in
   let h2 = subst_name_h a b in
   match h with
     Htrue -> Htrue
@@ -578,3 +577,15 @@ let rec eq aeq t u =
   | Susp(pi,_,v),Susp(pi',_,v') -> Perm.eq pi pi' && Var.eq v v'
   | _ -> false
 ;;
+
+let add_forall goal =
+  let free_vars = fvs_g goal in
+  Varset.fold (fun var g -> Gforall(var,g)) free_vars goal
+;;
+  
+(* add foralls to the right part of the implication *)  
+let add_forall_right = function
+  | Gimplies(d,g) -> Gimplies(d,add_forall g)
+  | g -> add_forall g
+			     
+		  

@@ -154,7 +154,7 @@ let rec pp_constr c =
 	<:> pp_constr c
 
 and pp_term term = 
-  let pp_clause prec (p,cs,p') = 
+  let _pp_clause prec (p,cs,p') = 
     pp_term p <+>
     if not(cs = []) 
     then 
@@ -372,7 +372,7 @@ let rec pp_rdecl decl =
   | CheckDirective(ty,b,Some false,t) -> 
       text "#invalidate" <+> quotes(text ty) <+> num b 
 	<+> colon <+> pp_term t <:>dot
-
+  | _ -> Util.impos "Absyn.pp_rdecl"
 and pp_decl decl = pp_rdecl decl.rdecl
 ;;
 
@@ -401,7 +401,8 @@ let ty2s = Printer.print_to_string pp_ty;;
 
 let t2s = Printer.print_to_string pp_term;;
 
-
+let d2s = Printer.print_to_string pp_decl;;
+  
 let rec apply_tysub sb ty = 
   let h = apply_tysub sb in
   match ty with
@@ -459,6 +460,50 @@ let rec apply_tysub_term sb tm =
   | _ -> tm
 ;;
 
+let rec apply_tmsub (sub : term Varmap.t) term =
+  match term with
+    Atomic (sym,terms) -> Atomic(sym,List.map (apply_tmsub sub) terms)
+  | Implies(body,head) -> Implies(apply_tmsub sub body,apply_tmsub sub head)
+  | Var v -> if Varmap.mem v sub then Varmap.find v sub else term
+  | Pair (t1,t2) -> Pair (apply_tmsub sub t1,apply_tmsub sub t2)
+  | True -> True
+  | False -> False
+  | Or (t1,t2) -> Or(apply_tmsub sub t1, apply_tmsub sub t2)
+  | And (t1,t2) -> And(apply_tmsub sub t1, apply_tmsub sub t2)
+  | Nil -> Nil
+  | Cons (t1,t2) -> Cons(apply_tmsub sub t1, apply_tmsub sub t2)
+  | Unit -> Unit
+  | Name n -> Name n (* not sure *)
+  | Eq (ty,t1,t2) -> Eq(ty,apply_tmsub sub t1,apply_tmsub sub t2)
+  | Underscore -> Underscore
+  | Not (t) -> Not(apply_tmsub sub t)					   
+  | Subst (t1,t2,t3) -> Subst(apply_tmsub sub t1,apply_tmsub sub t2,apply_tmsub sub t3)
+  | Fresh (None, tm1, tm2) -> Fresh (None,apply_tmsub sub tm1,apply_tmsub sub tm2)
+  | Fresh (Some (ty1,ty2), tm1, tm2) -> Fresh (Some (ty1,ty2),apply_tmsub sub tm1,apply_tmsub sub tm2)
+  | EUnify(t1,t2) -> EUnify (apply_tmsub sub t1, apply_tmsub sub t2)
+  | Is (t1,t2) -> Is (apply_tmsub sub t1, apply_tmsub sub t2)
+  | Forall (v,ty,tm) ->
+     let sub' = Varmap.remove v sub in
+     Forall(v,ty,apply_tmsub sub' tm)
+  | Exists  (v,ty,tm) ->
+     let sub' = Varmap.remove v sub in
+     Exists(v,ty,apply_tmsub sub' tm)
+  | New  (v,ty,tm) ->
+     let sub' = Varmap.remove v sub in
+     New(v,ty,apply_tmsub sub' tm)
+  | Lambda  (v,ty,tm) ->
+     let sub' = Varmap.remove v sub in
+       Lambda(v, ty, apply_tmsub sub' tm)
+  | App(t1,t2) -> App(apply_tmsub sub t1, apply_tmsub sub t2)
+  | Cut -> Cut
+  | Guard (t1,t2,t3) -> Guard (apply_tmsub sub t1, apply_tmsub sub t2, apply_tmsub sub t3)
+  | Transpose (a,b,t) -> Transpose (a,b,apply_tmsub sub t) (* not sure *)
+  | Abs(a,tm) -> Abs (a,apply_tmsub sub tm) (* not sure *)
+  | Conc(tm,a) -> Conc (apply_tmsub sub tm,a) (* not sure *)
+  | _ -> Util.impos "Absyn.apply_tmsub"
+;;			   
+
+  
 let freshen s = 
   let f = ftvs s in
   let m = Varset.fold 
@@ -533,8 +578,42 @@ let rec fvs t =
   | Guard(t1,t2,t3) -> (fvs t1) +++ (fvs t2) +++ (fvs t3)
 ;;
 
+let freshen_fvs term =
+  let free_vars = fvs term in
+  let map = Varset.fold 
+	      (fun var map ->
+	       Varmap.add var (Var (Var.rename var)) map) free_vars Varmap.empty in
+  apply_tmsub map term  
+;;
+
 let fvas t = Varset.union (fvs t) (fas t);;
 
+let rec fill_holes term =
+  match term with
+    Underscore -> Var (Var.mkvar "X")
+  | Atomic(sym,ts) -> Atomic (sym, List.map fill_holes ts)
+  | Transpose(a,b,t) -> Transpose(a,b,fill_holes t)
+  | Subst(t,u,v) -> Subst(fill_holes t,fill_holes u,fill_holes v)
+  | Cons(t1,t2) -> Cons(fill_holes t1,fill_holes t2)
+  | Pair(t1,t2) -> Pair(fill_holes t1,fill_holes t2)
+  | Abs(a,t) -> Abs(a,fill_holes t)
+  | Conc(t,a) -> Conc(fill_holes t,a)
+  | Fresh(tys,t1,t2) -> Fresh(tys,fill_holes t1,fill_holes t2)
+  | Eq(ty,t1,t2) -> Eq(ty,fill_holes t1,fill_holes t2)
+  | EUnify(t1,t2) -> EUnify(fill_holes t1,fill_holes t2)
+  | Is(t1,t2) -> Is(fill_holes t1,fill_holes t2)
+  | Implies(t1,t2) -> Implies(fill_holes t1,fill_holes t2)
+  | Or(t1,t2) -> Or(fill_holes t1,fill_holes t2)
+  | And(t1,t2) -> And(fill_holes t1,fill_holes t2)
+  | Forall(v,ty,tm) -> Forall(v,ty,fill_holes tm)
+  | Exists(v,ty,tm) -> Exists(v,ty,fill_holes tm)
+  | New(v,ty,tm) -> New(v,ty,fill_holes tm)
+  | Lambda(v,ty,tm) -> Lambda(v,ty,fill_holes tm)
+  | App(t1,t2) -> App(fill_holes t1,fill_holes t2)
+  | Guard(t1,t2,t3) -> Guard(fill_holes t1,fill_holes t2,fill_holes t3)
+  | Not(t) -> Not(fill_holes t)
+  |  _ -> term
+;;
 
 let rec unpack_ty ty = 
   match ty with
@@ -644,7 +723,7 @@ let rec is_firstorder t =
 (* Unify two terms, assuming that both sides are linear, have no 
    shared variables, and have no nominal features. *)
 
-let unify_linear t1 t2 = 
+let unify_linear t1 t2 =
   let rec unify t1 t2 s = 
     match t1,t2 with 
       Var(x), t -> Varmap.add x t s 
@@ -666,6 +745,7 @@ let unify_linear t1 t2 =
       [],[] -> s
     | t1::ts1, t2::ts2 -> 
 	unify t1 t2 (unifys ts1 ts2 s)
+    | _,_ -> Util.impos "Absyn.unifys"
   in try Some(unify t1 t2 Varmap.empty) with Not_found -> None
 ;;
 
@@ -697,7 +777,32 @@ and simplify_goal g =
 	True,_|_,True -> True
       |	False,g'|g',False -> g'
       |	g1',g2' -> Or(g1',g2')
-	  )
+  )
+  | Exists(v,ty,g') -> (
+    match simplify_goal g' with
+      True -> True
+    | False -> False
+    | g'' -> Exists(v,ty,g'')
+  )
+  | New(v,ty,g') -> (
+    match simplify_goal g' with
+      True -> True
+    | False -> False
+    | g'' -> New(v,ty,g'')
+  )
+  (* HH extension *)                      
+  | Implies(g1,g2) -> (
+      match (simplify_goal g1, simplify_goal g2) with 
+	True,_|_,True -> True
+      |	False,g'|g',False -> g'
+      |	g1',g2' -> Implies(g1',g2')
+  )
+  | Forall(v,ty,g') -> (
+    match simplify_goal g' with
+      True -> True
+    | False -> False
+    | g'' -> Forall(v,ty,g'')
+  )
   |  g' -> g'	    
       
 ;; 

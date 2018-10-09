@@ -27,4 +27,6 @@ let simplify_clauses = ref false;;
 let linearize = ref false;;
 let quantify = ref false;;
 let skip_occurs_check = ref false;;
+let ne_simpl = ref false;;
 let custom_check = ref false;;
+

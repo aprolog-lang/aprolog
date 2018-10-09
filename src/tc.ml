@@ -126,7 +126,7 @@ let is_var' s =
   then Util.impos "empty identifier"
   else 
     let c = String.get s 0 in
-    c = Char.uppercase c
+    c = Char.uppercase_ascii c
 ;;
 
 
@@ -865,8 +865,9 @@ let subst_to_map subst : (ty Varmap.t) tcm =
   using (fun sg -> 
     get_state >>= fun (tcenv) -> 
     let l = List.map (fun (x,_) -> 
-      let Some t = (Subst.finish subst x) in 
-      (x,Translate.untranslate_ty sg tcenv t)) l 
+      (match (Subst.finish subst x) with
+	Some t -> (x,Translate.untranslate_ty sg tcenv t)
+      | None -> Util.impos "Tc.subst_to_map")) l
     in 
     let m = List.fold_left (fun m (x,t) -> Varmap.add x t m) Varmap.empty l in
     return m)

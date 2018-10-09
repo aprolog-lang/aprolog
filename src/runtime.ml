@@ -244,18 +244,10 @@ let explode s =
   in expl 0
 ;;
 
-
-let implode cs = 
-  let n = List.length cs in 
-  let s = String.create n in
-  let rec impl i cs = 
-    if i < n 
-    then 
-      (String.set s i (List.hd cs); impl (i+1) (List.tl cs))
-    else ()
-  in impl 0 cs; s
+let implode cs =
+  let n = List.length cs in
+  String.init n (List.nth cs)
 ;;
-
 
 
 (* Names to strings *)
@@ -271,7 +263,7 @@ let name_to_string_decl =
 let string_to_name_decl = 
   let vA = VarTy(Var.mkvar("A")) in
   do_unop  string_rec  (name_rec vA) "from_string"
-    (fun s ->(Var.mkvar' (implode s)))
+    (fun s -> (Var.mkvar' (implode s)))
 ;;
 
 (* Name comparison *)

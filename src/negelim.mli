@@ -26,12 +26,24 @@ val generate_neqs : Tcenv.sg -> Absyn.decl list;;
 (* Given a signature, define non-freshness predicates for each name type and data type. *)
 val generate_nfreshs : Tcenv.sg -> Absyn.decl list;;
 
+(* Given a signature, define freshness predicates for each name type. *)  
+val generate_freshs: Tcenv.sg -> Absyn.decl list;;
+
+(* Given a signature, define equivalence predicates for each name type. *)  
+val generate_eqs: Tcenv.sg -> Absyn.decl list;;
+  
 (* Given a signature, define forallstar predicates for each data type *)
 val generate_forallstars : Tcenv.sg -> Absyn.decl list;;
 
-
 (* Given a signature, negate all of the predicates in it *)
 val generate_negation : Tcenv.sg -> Absyn.decl list;;
+  
+(* Given a signature, a list of predicate names, it returns their negative declarations *)
+val generate_negative_decls : Tcenv.sg -> string list -> Absyn.decl list;;
+
+(* Given a signature, a list of predicate names, it returns their negative definitions 
+and some stats *)
+val generate_negative_defns : Tcenv.sg -> string list -> Absyn.decl list * string;;
 
 (* Givein a goal, define its negation in terms of negated predicates generated above *) 
 val negate_goal : Absyn.term -> Absyn.term;;
@@ -45,3 +57,4 @@ val negate_test : Absyn.term -> Absyn.term;;
 
 (* Given a test, it returns a new test where all free vars in conclusion are made ground *)
 val add_generators: Tcenv.sg -> Tcenv.tcenv -> Absyn.term -> Absyn.term;;
+
