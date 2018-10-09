@@ -13,7 +13,7 @@ module N = Negelim;;
 Random.self_init();;
 
 (* Some global variables for interpreter state *)
-let version = "0.39";;
+let version = "0.4";;
 let interactive = ref false;;
 let verbose = ref false;;
 let log = ref false;;
