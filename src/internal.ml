@@ -555,7 +555,6 @@ let rec subst_name_t a b t =
  
 and subst_name_h a b h = 
   let h0 = subst_name a b in
-  let h1 = subst_name_t a b in
   let h2 = subst_name_h a b in
   match h with
     Htrue -> Htrue

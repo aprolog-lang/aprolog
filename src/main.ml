@@ -311,7 +311,7 @@ let get_preds_to_negate test =
 let rec run1 pos decl sg idx = 
   Var.reset_var();
   match decl with
-    Query (t) as decl -> 
+    Query (t)-> 
       let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
       if not(!tc_only) && (!errors = 0 || !interactive)
       then (
@@ -348,7 +348,7 @@ let rec run1 pos decl sg idx =
 	with Success -> ()
 	|  Sys.Break -> print_string "\nInterrupted.\n"));
       sg,idx
-  | ClauseDecl(c) as decl -> 
+  | ClauseDecl(c) -> 
       if !verbose 
       then ( (* print_endline "Processing clause:";*)
 	    Printer.print_to_channel Absyn.pp_term (Absyn.simplify c) stdout;
@@ -534,7 +534,8 @@ let rec run1 pos decl sg idx =
           if !Flags.debug then
             (print_string "negative_defns: \n";
              List.iter (fun ndefn -> print_string (d2s ndefn ^ "\n")) neg_defns);
-          let sg = run sg idx neg_defns in
+	  (* WARNING: _sg unused? *)
+          let _sg = run sg idx neg_defns in
           if !dump_ne then 
             (let out_chan = open_dump !dumpfile in 
              List.iter (fun d -> Printer.print_to_channel Absyn.pp_decl d out_chan;
@@ -559,7 +560,8 @@ let rec run1 pos decl sg idx =
             if !Flags.debug then
               (print_string "negative_defns: \n";
                List.iter (fun ndefn -> print_string (d2s ndefn ^ "\n")) neg_defns);
-            let sg = run sg idx neg_defns in
+	    (* WARNING: sg unused? *)
+            let _sg = run sg idx neg_defns in
             if !dump_ne then 
               (let out_chan = open_dump !dumpfile in 
                List.iter (fun d -> Printer.print_to_channel Absyn.pp_decl d out_chan;

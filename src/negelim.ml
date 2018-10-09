@@ -735,7 +735,7 @@ let are_equiv_ty ty1 ty2 =
     | _ -> raise (Not_equivalent "type mismatch") 
   in
   try
-    h (ty1,ty2) Varmap.empty;
+    let _ = h (ty1,ty2) Varmap.empty in
     true
   with
     Not_equivalent msg -> (* print_string msg; print_newline; *) false
@@ -795,7 +795,7 @@ let rec are_equiv_cl c1 c2 =
   | _ -> raise (Not_equivalent ("catchall " ^ (t2s c1) ^ " " ^ (t2s c2)))
   in
   try
-    h1 (c1,c2) (Varmap.empty,Varmap.empty);
+    let _ = h1 (c1,c2) (Varmap.empty,Varmap.empty) in
     if !Flags.debug then print_endline ((t2s c1) ^ " is equivalent to\n" ^ (t2s c2));
     incr_sub_counter ();
     true

@@ -154,7 +154,7 @@ let rec pp_constr c =
 	<:> pp_constr c
 
 and pp_term term = 
-  let pp_clause prec (p,cs,p') = 
+  let _pp_clause prec (p,cs,p') = 
     pp_term p <+>
     if not(cs = []) 
     then 
@@ -372,7 +372,7 @@ let rec pp_rdecl decl =
   | CheckDirective(ty,b,Some false,t) -> 
       text "#invalidate" <+> quotes(text ty) <+> num b 
 	<+> colon <+> pp_term t <:>dot
-
+  | _ -> Util.impos "Absyn.pp_rdecl"
 and pp_decl decl = pp_rdecl decl.rdecl
 ;;
 
@@ -480,8 +480,6 @@ let rec apply_tmsub (sub : term Varmap.t) term =
   | Subst (t1,t2,t3) -> Subst(apply_tmsub sub t1,apply_tmsub sub t2,apply_tmsub sub t3)
   | Fresh (None, tm1, tm2) -> Fresh (None,apply_tmsub sub tm1,apply_tmsub sub tm2)
   | Fresh (Some (ty1,ty2), tm1, tm2) -> Fresh (Some (ty1,ty2),apply_tmsub sub tm1,apply_tmsub sub tm2)
-  | Eq (None,tm1,tm2) -> Eq (None, apply_tmsub sub tm1, apply_tmsub sub tm2)
-  | Eq (Some ty,tm1,tm2) -> Eq (Some ty, apply_tmsub sub tm1, apply_tmsub sub tm2)
   | EUnify(t1,t2) -> EUnify (apply_tmsub sub t1, apply_tmsub sub t2)
   | Is (t1,t2) -> Is (apply_tmsub sub t1, apply_tmsub sub t2)
   | Forall (v,ty,tm) ->
@@ -502,6 +500,7 @@ let rec apply_tmsub (sub : term Varmap.t) term =
   | Transpose (a,b,t) -> Transpose (a,b,apply_tmsub sub t) (* not sure *)
   | Abs(a,tm) -> Abs (a,apply_tmsub sub tm) (* not sure *)
   | Conc(tm,a) -> Conc (apply_tmsub sub tm,a) (* not sure *)
+  | _ -> Util.impos "Absyn.apply_tmsub"
 ;;			   
 
   
@@ -746,6 +745,7 @@ let unify_linear t1 t2 =
       [],[] -> s
     | t1::ts1, t2::ts2 -> 
 	unify t1 t2 (unifys ts1 ts2 s)
+    | _,_ -> Util.impos "Absyn.unifys"
   in try Some(unify t1 t2 Varmap.empty) with Not_found -> None
 ;;
 
