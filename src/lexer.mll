@@ -129,6 +129,7 @@ rule lex =
       | "#check"              { CHECK }
       | "#validate"           { VALIDATE }
       | "#invalidate"         { INVALIDATE }
+      | "#save_to_file"         { SAVETOFILE }
 (*      | "#gen"                { GEN_DIR }*)
 
       | "lambda"              { LAMBDA }

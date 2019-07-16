@@ -109,7 +109,7 @@ let rec ty_app ts t =
 %token <string> ID LITERAL 
 %token <Nstbl.path> QUAL_ID
 %token <char> CHAR
-%token USE TRACE QUIT OPEN TYPEQ HELP CHECK VALIDATE INVALIDATE
+%token USE TRACE QUIT OPEN TYPEQ HELP CHECK VALIDATE INVALIDATE SAVETOFILE
 %token NAME_TYPE TYPE INFIXL INFIXR INFIXN NAMESPACE FUNC PRED CNST PROP
 %token LPAREN RPAREN LBRACK RBRACK LBRACE RBRACE 
 %token QUESTION DOT COLON UNDERSCORE TILDE DOLLAR
@@ -248,6 +248,7 @@ directive : USE LITERAL                 { UseDirective($2) }
 	  | CHECK LITERAL INT COLON preterm { CheckDirective($2,$3,None,$5) }
 	  | VALIDATE LITERAL INT COLON preterm { CheckDirective($2,$3,Some true,$5) }
 	  | INVALIDATE LITERAL INT COLON preterm { CheckDirective($2,$3,Some false,$5) }
+	  | SAVETOFILE LITERAL LITERAL directive { SaveDirective($2,$3,mk_decl $4) }
 /*	  | GEN_DIR LITERAL             { GenerateDirective($2) }*/
 ;
 

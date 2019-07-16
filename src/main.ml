@@ -308,46 +308,51 @@ let get_preds_to_negate test =
   depen_graph := dep_graph;
   preds_to_negate
 
+    (* TODO: parameterize by success continuation, provide different ones
+       for save_to_file *)
+let handle_query t sg idx =
+  let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
+  let rec init_sc tcenv fvs = 
+    solve_constrs (fun ans -> 
+      print_string "Yes.\n"; 
+      Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
+      flush stdout;
+      if !interactive 
+      then (
+	let s = input_line stdin in
+	if s = ";" then () else succeed())
+      else succeed()
+		  )
+  in
+  if not(!tc_only) && (!errors = 0 || !interactive)
+  then (
+    if !debug || not(!interactive)
+    then (print_string "--------\nQuery: ";
+	  Printer.print_to_channel Absyn.pp_term g stdout;
+	  print_string "\n";
+	  flush stdout
+	 );
+    (try 
+      let g' = Translate.translate_goal sg tcenv g in
+      if !debug 
+      then (
+	Printer.print_to_channel (Internal.pp_goal Isym.pp_term_sym) 
+	  g' stdout;
+	print_string "\n"
+       );
+      let fvs = Varset.elements (Internal.fvs_g g') in
+      Solve.solve Isym.pp_term_sym idx g' (init_sc tcenv fvs);
+      (* if we reach here, then no solution ws found *)
+      print_string "No.\n"
+    with Success -> ()
+    |  Sys.Break -> print_string "\nInterrupted.\n"));
+  sg,idx
+
+    
 let rec run1 pos decl sg idx = 
   Var.reset_var();
   match decl with
-    Query (t)-> 
-      let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
-      if not(!tc_only) && (!errors = 0 || !interactive)
-      then (
-	if !debug || not(!interactive)
-	then (print_string "--------\nQuery: ";
-	      Printer.print_to_channel Absyn.pp_term g stdout;
-	      print_string "\n";
-	      flush stdout
-	      );
-	let rec init_sc fvs = 
-	  solve_constrs (fun ans -> 
-  	    print_string "Yes.\n"; 
-	    Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
-	    flush stdout;
-	    if !interactive 
-	    then (
-	      let s = input_line stdin in
-	      if s = ";" then () else succeed())
-	    else succeed()
-	  )
-	in
-	(try 
-	  let g' = Translate.translate_goal sg tcenv g in
-	  if !debug 
-	  then (
-	    Printer.print_to_channel (Internal.pp_goal Isym.pp_term_sym) 
-	      g' stdout;
-	    print_string "\n"
-	   );
-	  let fvs = Varset.elements (Internal.fvs_g g') in
-          Solve.solve Isym.pp_term_sym idx g' (init_sc fvs);
-	  (* if we reach here, then no solution ws found *)
-	  print_string "No.\n"
-	with Success -> ()
-	|  Sys.Break -> print_string "\nInterrupted.\n"));
-      sg,idx
+    Query (t) -> handle_query t sg idx
   | ClauseDecl(c) -> 
       if !verbose 
       then ( (* print_endline "Processing clause:";*)
@@ -639,7 +644,10 @@ let rec run1 pos decl sg idx =
 	  then (print_string "Specification fails!\n";
 		raise (RuntimeError ("Specification "^name^" failed")))
 	  else print_string "\n"
-	|  Sys.Break -> time_msg(""); print_string("Interrupted\n"); print_string ("Total: " ^ string_of_float (time2()) ^ " s:\n")));
+	|  Sys.Break ->
+	    time_msg("");
+	    print_string("Interrupted\n");
+	    print_string ("Total: " ^ string_of_float (time2()) ^ " s:\n")));
       sg,idx
   | GenerateDirective("gen") -> 
       let decls = Negelim.generate_terms sg in
