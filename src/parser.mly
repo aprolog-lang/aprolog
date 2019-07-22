@@ -248,7 +248,7 @@ directive : USE LITERAL                 { UseDirective($2) }
 	  | CHECK LITERAL INT COLON preterm { CheckDirective($2,$3,None,$5) }
 	  | VALIDATE LITERAL INT COLON preterm { CheckDirective($2,$3,Some true,$5) }
 	  | INVALIDATE LITERAL INT COLON preterm { CheckDirective($2,$3,Some false,$5) }
-	  | SAVETOFILE LITERAL LITERAL directive { SaveDirective($2,$3,mk_decl $4) }
+	  | SAVETOFILE LITERAL LITERAL directive { SaveDirective($2,$3,$4) }
 /*	  | GEN_DIR LITERAL             { GenerateDirective($2) }*/
 ;
 

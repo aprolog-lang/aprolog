@@ -308,22 +308,42 @@ let get_preds_to_negate test =
   depen_graph := dep_graph;
   preds_to_negate
 
-    (* TODO: parameterize by success continuation, provide different ones
-       for save_to_file *)
+    
+(* TODO: factor this into:
+   - a function that sets up evaluation and constructs a lazy stream of answer
+   - a function that handles interactive query execution, printing 
+     next answers and getting next stream element if requested
+   - alternative stream handlers to handle functions 
+ *)
+
+type 'a stream = {next: unit -> ('a * 'a stream) option}
+
+let handle_answer_stream_interactively sg tcenv fvs stream =
+  let rec loop stream =
+    match stream.next() with
+      None -> print_string "No.\n"
+    | Some (ans,stream) ->
+	print_string "Yes.\n";
+	Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
+	flush stdout;
+	let s = input_line stdin in
+	if s = ";" then loop stream else ()
+  in loop stream
+
 let handle_query t sg idx =
-  let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
-  let rec init_sc tcenv fvs = 
+  let init_sc tcenv fvs = 
     solve_constrs (fun ans -> 
       print_string "Yes.\n"; 
       Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
       flush stdout;
       if !interactive 
       then (
-	let s = input_line stdin in
-	if s = ";" then () else succeed())
+        let s = input_line stdin in
+        if s = ";" then () else succeed())
       else succeed()
-		  )
-  in
+    )
+  in 
+  let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
   if not(!tc_only) && (!errors = 0 || !interactive)
   then (
     if !debug || not(!interactive)
@@ -348,31 +368,43 @@ let handle_query t sg idx =
     |  Sys.Break -> print_string "\nInterrupted.\n"));
   sg,idx
 
-    
+
+let print_generated decls =
+  print_string "GENERATED:\n";
+  List.iter (fun decl -> print_to_channel pp_decl decl stdout;
+    print_string "\n") decls;
+  print_string "END\n"
+
+let dump_generated decls =
+  let oc = open_dump !dumpfile in
+  List.iter
+    (fun decl -> print_to_channel pp_decl decl oc; 
+      output_string oc "\n")
+    decls;
+  close_out oc
+
+let print_msg msg p =
+  print_endline (msg);
+  Printer.print_to_channel Absyn.pp_term p stdout;
+  print_string ".\n"
+
 let rec run1 pos decl sg idx = 
   Var.reset_var();
   match decl with
     Query (t) -> handle_query t sg idx
+  | SaveDirective(_,_,Query (t)) -> handle_query t sg idx
   | ClauseDecl(c) -> 
       if !verbose 
-      then ( (* print_endline "Processing clause:";*)
-	    Printer.print_to_channel Absyn.pp_term (Absyn.simplify c) stdout;
-	    print_string ".\n");
+      then print_msg "" (Absyn.simplify c);
       let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c) in
-      if !verbose && !debug
-      then (print_endline "Typechecked:";
-	    Printer.print_to_channel Absyn.pp_term p stdout;
-	    print_string ".\n");
+      if !verbose && !debug then print_msg "Typechecked:" p;
 (* Linearization pass *)
       let (tcenv,p) = 
 	if !Flags.linearize && pos <> None
         then 
 	  let c' = Absyn.linearize_prog p in
 	  let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c')  in
-	  if !verbose
-	  then (print_endline "Linearized:";
-		Printer.print_to_channel Absyn.pp_term p stdout;
-		print_string ".\n");
+	  if !verbose then print_msg "Linearized:" p;
 	  (tcenv,p)
         else (tcenv,p) in
 (* Well-quantification pass *)
@@ -381,31 +413,17 @@ let rec run1 pos decl sg idx =
         then
           let c = Absyn.well_quantify_prog p in
           let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c)  in
-          if !verbose
-          then (print_endline "Well-quantified:";
-        	Printer.print_to_channel Absyn.pp_term p stdout;
-        	print_string ".\n");
+          if !verbose then print_msg "Well-quantified:" p;
           (tcenv,p)
         else (tcenv,p) in
 (* Simplification pass *)
-      let p = 
-	if !Flags.simplify_clauses 
-	then (let p = Absyn.simplify p in 
-	     if !verbose 
-	     then () (*print_endline "Simplified:";
-		   Printer.print_to_channel Absyn.pp_term p stdout;
-		   print_string ".\n"*);
-	     p)
-	else p in
+      let p = if !Flags.simplify_clauses then Absyn.simplify p else p in
       let sg = Tcenv.add_clause_decl sg p in
 
       if !ne_simpl then
         (let updated_dep_graph = Dg.add_clause_deps c !depen_graph in
         depen_graph := updated_dep_graph);
-        
-      (*if !verbose 
-      then (Printer.print_to_channel Absyn.pp_term p stdout;
-	    print_string ".\n");*)
+
       if not(!tc_only) && (!errors = 0 || !interactive)
       then 
 	(let p' = Translate.translate_prog sg tcenv p in
@@ -649,79 +667,35 @@ let rec run1 pos decl sg idx =
 	    print_string("Interrupted\n");
 	    print_string ("Total: " ^ string_of_float (time2()) ^ " s:\n")));
       sg,idx
-  | GenerateDirective("gen") -> 
+  | GenerateDirective("gen") ->
       let decls = Negelim.generate_terms sg in
-      if !debug
-      then (print_string "GENERATED:\n" ;
-	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-	      print_string "\n") decls;
-	    print_string "END\n");
+      if !debug then print_generated decls;
       run sg idx decls, idx
-  | GenerateDirective("neq") -> 
+  | GenerateDirective("neq") ->
       let decls = Negelim.generate_neqs sg in
-      if !debug
-      then (print_string "GENERATED:\n" ;
-	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-	      print_string "\n") decls;
-	    print_string "END\n");
-      if !dump_ne
-      then (let oc = open_dump !dumpfile in
-            List.iter
-              (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
-              decls;
-            close_out oc);            
+      if !debug then print_generated decls;
+      if !dump_ne then dump_generated decls;
       run sg idx decls, idx
-  | GenerateDirective("nfresh") -> 
+  | GenerateDirective("nfresh") ->
       let decls = Negelim.generate_nfreshs sg in
-       if !debug
-      then (print_string "GENERATED:\n" ;
-	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-	      print_string "\n") decls;
-	    print_string "END\n");
-       if !dump_ne
-       then (let oc = open_dump !dumpfile in
-             List.iter
-               (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
-               decls;
-             close_out oc);
-       run sg idx decls, idx
+      if !debug then print_generated decls;
+      if !dump_ne then dump_generated decls;
+      run sg idx decls, idx
   | GenerateDirective("fresh") ->
      let decls = Negelim.generate_freshs sg in
-     if !debug
-     then (print_string "GENERATED:\n" ;
-	   List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-	                          print_string "\n") decls;
-	   print_string "END\n");
-     if !dump_ne
-     then (let oc = open_dump !dumpfile in
-           List.iter
-             (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
-             decls;
-           close_out oc);
+     if !debug then print_generated decls;
+     if !dump_ne then dump_generated decls;
      run sg idx decls, idx
   | GenerateDirective("eq") ->
      let decls = Negelim.generate_eqs sg in
-     if !debug
-     then (print_string "GENERATED:\n" ;
-	   List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-	                          print_string "\n") decls;
-	   print_string "END\n");
-     if !dump_ne
-     then (let oc = open_dump !dumpfile in
-           List.iter
-             (fun decl -> print_to_channel pp_decl decl oc; output_string oc "\n")
-             decls;
-           close_out oc);
-     run sg idx decls, idx                         
+     if !debug then print_generated decls;
+     if !dump_ne then dump_generated decls;
+     run sg idx decls, idx
   (* TODO: after negelim interface is adapted use commented code for generating not *)
   | GenerateDirective("not") -> 
-      let decls = Negelim.generate_negation sg in
-       if !debug
-      then (print_string "GENERATED:\n" ;
-	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-	      print_string "\n") decls;
-	    print_string "END\n");
-       run sg idx decls, idx
+     let decls = Negelim.generate_negation sg in
+     if !debug then print_generated decls;
+     run sg idx decls, idx
 (* | GenerateDirective("not") -> *)
 (*    let defns = Negelim.generate_negated_decls sg in *)
 (*    let sg' = run sg idx defns in *)
@@ -733,64 +707,10 @@ let rec run1 pos decl sg idx =
 (*           print_string "END\n"); *)
 (*     run sg' idx decls, idx *)
   | GenerateDirective("forallstar") -> 
-      let decls = Negelim.generate_forallstars sg in
-      if !debug
-      then (print_string "GENERATED:\n" ;
-	    List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-	      print_string "\n") decls;
-	    print_string "END\n");
-      run sg idx decls, idx
-(*
-  | NeqDirective(dty,neq_path) -> 
-      (* Check that symbol dty is a declared datatype of kind * *)
-      let (kd,_,abbrev) = Nstbl.find sg.ksg dty in 
-      if kd != TypeK || abbrev <> None then Util.impos "#neq: only for base data types" else
-      (* Check that symbol neq is a predicate of type dty * dty -> prop *)
-      let {is_def=def;sym_id=_;sym_ty=ty} = Nstbl.find sg.tsg neq_path in 
-      (* TODO *)
-      (* Find the definition of dty *)
-      let dty_sym = Nstbl.resolve (sg.ksg) dty in
-      let defn = Tcenv.get_definition sg dty_sym in
-      let neq_sym = Nstbl.resolve (sg.ksg) neq_path in
-      let clauses = Negelim.generate_neq neq_sym defn in
-      List.iter (fun clause -> print_to_channel pp_term clause stdout; print_string ".\n") clauses;
-      List.fold_left (fun (sg,idx) c -> run1 pos (ClauseDecl c) sg idx) (sg,idx) clauses
+     let decls = Negelim.generate_forallstars sg in
+     if !debug then print_generated decls;
+     run sg idx decls, idx
 
-  | NfreshDirective(dty,nfresh_path) -> 
-      (* Check that symbol dty is a declared datatype of kind * *)
-      let (kd,_,abbrev) = Nstbl.find sg.ksg dty in 
-      if kd != TypeK || abbrev <> None  then Util.impos "#nfresh: only for base data types" else
-      (* Check that symbol nfresh is a predicate of type A * dty -> prop *)
-      let {is_def=def;sym_id=_;sym_ty=ty} = Nstbl.find sg.tsg nfresh_path in 
-      (* TODO *)
-      (* Find the definition of dty *)
-      let dty_sym = Nstbl.resolve (sg.ksg) dty in
-      let defn = Tcenv.get_definition sg dty_sym in
-      let nfresh_sym = Nstbl.resolve (sg.ksg) nfresh_path in
-      let clauses = Negelim.generate_nfresh nfresh_sym defn in
-      List.iter (fun clause -> print_to_channel pp_term clause stdout; print_string ".\n") clauses;
-      List.fold_left (fun (sg,idx) c -> run1 pos (ClauseDecl c) sg idx) (sg,idx) clauses
-
-  | GenDirective(dty,gen_path) -> 
-      let decls = Negelim.generate_terms sg in
-      List.iter (fun decl -> print_to_channel pp_decl decl stdout;print_string "\n") decls;
-      run sg idx decls, idx
-      (*(* Check that symbol dty is a declared datatype of kind * *)
-      let (kd,_,abbrev) = Nstbl.find sg.ksg dty in 
-      if kd != TypeK || abbrev <> None then Util.impos "#gen: only for base data types" else
-      (* Check that symbol gen is a predicate of type dty -> prop *)
-      let {is_def=def;sym_id=_;sym_ty=ty} = Nstbl.find sg.tsg gen_path in 
-      if not(match ty with 
-	    ArrowTy(DataTy(dty',[]),PropTy) -> true (* TODO : Check symbols dty, dty' equal *)
-	  | _ -> false) then Util.nyi();
-      (* Find the definition of dty *)
-      let dty_sym = Nstbl.resolve (sg.ksg) dty in
-      let defn = Tcenv.get_definition sg dty_sym in
-      let gen_sym = Nstbl.resolve (sg.ksg) gen_path in
-      let clauses = Negelim.generate_term gen_sym defn in
-      List.iter (fun clause -> print_to_channel pp_term clause stdout; print_string ".\n") clauses;
-      List.fold_left (fun (sg,idx) c -> run1 pos (ClauseDecl c) sg idx) (sg,idx) clauses*)
-*)
 
 and run sg idx rest = 
   match rest with 
@@ -986,8 +906,8 @@ let main args =
                ("-check-ne-simpl", Arg.Unit(arg_check_ne_simpl), "Check using negation elimination with negative predicates simplification (experimental)");
                ("-check-ne-simpl-minus", Arg.Unit(arg_check_ne_simpl_minus), "Like -check-ne-simpl but without extensional quantification");
                ("-nd", Arg.String(set_dumpfile), "Dump negative predicates in the specified file");
-               ("-cc",Arg.Set(custom_check), "It does not manipulate check directive, letting the user specify generators or negative predicates.");
-               ("-a",Arg.Set(interactive), "It enables interactive mode also during specification checking") 
+               ("-cc",Arg.Set(custom_check), "Disables manipulation of the check directive, letting the user specify generators or negative predicates.");
+               ("-a",Arg.Set(interactive), "Enables interactive mode also during specification checking") 
 	     ]
   in
   print_string ("AlphaProlog "^version^"\n");
@@ -1004,4 +924,3 @@ let main args =
 
 
 main Sys.argv;;
-    

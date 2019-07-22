@@ -63,7 +63,7 @@ and rdecl = KindDecl of sym * kind
   | OpenDirective of Nstbl.path
   | HelpDirective of Nstbl.path option
   | CheckDirective of string * int * bool option * term
-  | SaveDirective of string * string * decl
+  | SaveDirective of string * string * rdecl
 (* Controls the generation of negation code for equality, freshness, and other predicates *)
   | GenerateDirective of string
 ;;
