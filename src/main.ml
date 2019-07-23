@@ -19,6 +19,8 @@ let verbose = ref false;;
 let log = ref false;;
 let errors = ref 0;;
 let dumpfile = ref "";;
+
+(* It would be nice to get rid of this side-effecting state *)
 let dump_ne = ref false;;
 let depen_graph = ref Dg.empty;;
 
@@ -125,25 +127,6 @@ let get_decls find_file file =
   |  None -> print_string (file^": File not found\n"); []
 ;;
   
-(* TODO: Make the constrs data structure be like this intermediate 
-   data structure *)
-let simplify fvs (subst,constrs) = (subst,constrs)
-(*  let rec mk_map constrs = 
-    match constrs with
-      [] -> (Varmap.empty)
-    | (t,v)::constrs -> 
-      let (vmap) = mk_map constrs in 
-      let set = try Varmap.find v vmap with Not_found -> Varset.empty in
-      (Varmap.add v (Varset.add t set) vmap)
-    |  _ -> Util.impos "unexpected case in simplify"
-  in let mk_constrs (vmap) = 
-    let vss = Varmap.to_list vmap in
-    let vls = List.map (fun (v,tset) -> (v,Varset.elements tset)) vss in
-    let constrs = List.concat (List.map (fun (v,tset) -> List.map (fun t -> (t,v)) tset) vls) in
-    constrs
-  in (subst,mk_constrs(mk_map constrs))
-;;
-*)
 
 let forall f l = List.fold_left (&&) true (List.map f l);;
 let rec mem x l = match l with
@@ -308,7 +291,37 @@ let get_preds_to_negate test =
   depen_graph := dep_graph;
   preds_to_negate
 
-    
+    (* Some helper printing functions *)
+let print_generated decls =
+  print_string "GENERATED:\n";
+  List.iter (fun decl -> print_to_channel pp_decl decl stdout;
+    print_string "\n") decls;
+  print_string "END\n"
+
+let dump_generated decls =
+  let oc = open_dump !dumpfile in
+  List.iter
+    (fun decl -> print_to_channel pp_decl decl oc; 
+      output_string oc "\n")
+    decls;
+  close_out oc
+
+let print_clause msg p =
+  print_endline (msg);
+  print_to_channel pp_term p stdout;
+  print_string ".\n"
+
+let print_term msg t =
+  print_string msg;
+  print_to_channel pp_term t stdout;
+  print_string "\n";
+  flush stdout
+
+let print_internal pp t =
+  print_to_channel (pp Isym.pp_term_sym) t stdout;
+  print_string "\n"
+
+
 (* TODO: factor this into:
    - a function that sets up evaluation and constructs a lazy stream of answer
    - a function that handles interactive query execution, printing 
@@ -346,20 +359,10 @@ let handle_query t sg idx =
   let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
   if not(!tc_only) && (!errors = 0 || !interactive)
   then (
-    if !debug || not(!interactive)
-    then (print_string "--------\nQuery: ";
-	  Printer.print_to_channel Absyn.pp_term g stdout;
-	  print_string "\n";
-	  flush stdout
-	 );
+    if !debug || not(!interactive) then print_term "--------\nQuery: " g;
     (try 
       let g' = Translate.translate_goal sg tcenv g in
-      if !debug 
-      then (
-	Printer.print_to_channel (Internal.pp_goal Isym.pp_term_sym) 
-	  g' stdout;
-	print_string "\n"
-       );
+      if !debug then print_internal Internal.pp_goal g';
       let fvs = Varset.elements (Internal.fvs_g g') in
       Solve.solve Isym.pp_term_sym idx g' (init_sc tcenv fvs);
       (* if we reach here, then no solution ws found *)
@@ -368,56 +371,33 @@ let handle_query t sg idx =
     |  Sys.Break -> print_string "\nInterrupted.\n"));
   sg,idx
 
+let optionally b f x = if b then f(x) else x
 
-let print_generated decls =
-  print_string "GENERATED:\n";
-  List.iter (fun decl -> print_to_channel pp_decl decl stdout;
-    print_string "\n") decls;
-  print_string "END\n"
 
-let dump_generated decls =
-  let oc = open_dump !dumpfile in
-  List.iter
-    (fun decl -> print_to_channel pp_decl decl oc; 
-      output_string oc "\n")
-    decls;
-  close_out oc
-
-let print_msg msg p =
-  print_endline (msg);
-  Printer.print_to_channel Absyn.pp_term p stdout;
-  print_string ".\n"
-
-let rec run1 pos decl sg idx = 
+let rec run1 pos decl sg idx =
   Var.reset_var();
   match decl with
     Query (t) -> handle_query t sg idx
-  | SaveDirective(_,_,Query (t)) -> handle_query t sg idx
-  | ClauseDecl(c) -> 
-      if !verbose 
-      then print_msg "" (Absyn.simplify c);
+  | ClauseDecl(c) ->
+      if !verbose then print_clause "" (Absyn.simplify c);
       let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c) in
-      if !verbose && !debug then print_msg "Typechecked:" p;
-(* Linearization pass *)
-      let (tcenv,p) = 
-	if !Flags.linearize && pos <> None
-        then 
-	  let c' = Absyn.linearize_prog p in
-	  let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c')  in
-	  if !verbose then print_msg "Linearized:" p;
-	  (tcenv,p)
-        else (tcenv,p) in
-(* Well-quantification pass *)
-      let  (tcenv,p) =
-        if !Flags.quantify && pos <> None
-        then
-          let c = Absyn.well_quantify_prog p in
-          let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c)  in
-          if !verbose then print_msg "Well-quantified:" p;
-          (tcenv,p)
-        else (tcenv,p) in
-(* Simplification pass *)
-      let p = if !Flags.simplify_clauses then Absyn.simplify p else p in
+      if !verbose && !debug then print_clause "Typechecked:" p;
+      let (tcenv,p) = (* Linearization pass *)
+	optionally (!Flags.linearize && pos <> None)
+          (fun (tcenv,p) -> 
+	    let c' = Absyn.linearize_prog p in
+	    let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c')  in
+	    if !verbose then print_clause "Linearized:" p;
+	    (tcenv,p)) (tcenv,p) in
+      let (tcenv,p) = (* Well-quantification pass *)
+        optionally (!Flags.quantify && pos <> None)
+          (fun (tcenv,p) -> 
+            let c = Absyn.well_quantify_prog p in
+            let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c) in
+            if !verbose then print_clause "Well-quantified:" p;
+            (tcenv,p)) (tcenv,p) in
+      (* Simplification pass *)
+      let p = optionally (!Flags.simplify_clauses) Absyn.simplify p in
       let sg = Tcenv.add_clause_decl sg p in
 
       if !ne_simpl then
@@ -431,12 +411,7 @@ let rec run1 pos decl sg idx =
 	let fvs = Varset.elements(Internal.fvs_p p') in
 	let p' = List.fold_right (fun v p -> Internal.Dforall (v,p)) fvs p' in
 	let p' = List.fold_right (fun a p -> Internal.Dnew(a,p)) fas p' in
-	if !debug 
-	then (
-	  Printer.print_to_channel (Internal.pp_prog Isym.pp_term_sym) 
-	    p' stdout;
-	  print_string "\n"
-	 );
+	if !debug then print_internal Internal.pp_prog p';
 	Index.add idx p');
       sg,idx
   | NamespaceDecl(sym,decls) -> 
@@ -543,56 +518,41 @@ let rec run1 pos decl sg idx =
       help();
       sg,idx
   | CheckDirective(name,bound,validity,test1) ->
+    
     let tcenv,test4 =
       if !custom_check then (
         if !ne_simpl then (
           let preds_to_negate = get_preds_to_negate test1 in
           let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
-          if !Flags.debug then
-            (print_endline "negative_decls:";
-             List.iter (fun ndecl -> print_string (d2s ndecl ^ "\n")) neg_decls);
+          if !Flags.debug then print_generated neg_decls;
           let sg = run sg idx neg_decls in
           let (neg_defns,stats_buffer) =
             Negelim.generate_negative_defns sg preds_to_negate in
-          if !Flags.debug then
-            (print_string "negative_defns: \n";
-             List.iter (fun ndefn -> print_string (d2s ndefn ^ "\n")) neg_defns);
+          if !Flags.debug then print_generated neg_defns;
 	  (* WARNING: _sg unused? *)
           let _sg = run sg idx neg_defns in
-          if !dump_ne then 
-            (let out_chan = open_dump !dumpfile in 
-             List.iter (fun d -> Printer.print_to_channel Absyn.pp_decl d out_chan;
-                         output_string out_chan "\n") (neg_decls@neg_defns);
-             close_out out_chan);
+          if !dump_ne then dump_generated (neg_decls@neg_defns);
           if !verbose then print_string stats_buffer);
         Monad.run sg empty_env (Tc.check_test test1)
-      ) else
-        (
-          let (tcenv,test2) = Monad.run sg empty_env (Tc.check_test test1) in
-          let test3 = if !Flags.negelim then N.negate_test test2
-            else N.add_generators sg tcenv test2 in
-          if !ne_simpl then
-            (let preds_to_negate = get_preds_to_negate test3 in
-            let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
-            if !Flags.debug then
-              (print_endline "negative_decls:";
-               List.iter (fun ndecl -> print_string (d2s ndecl ^ "\n")) neg_decls);
-            let sg = run sg idx neg_decls in
-            let (neg_defns,stats_buffer) =
-              Negelim.generate_negative_defns sg preds_to_negate in
-            if !Flags.debug then
-              (print_string "negative_defns: \n";
-               List.iter (fun ndefn -> print_string (d2s ndefn ^ "\n")) neg_defns);
-	    (* WARNING: sg unused? *)
-            let _sg = run sg idx neg_defns in
-            if !dump_ne then 
-              (let out_chan = open_dump !dumpfile in 
-               List.iter (fun d -> Printer.print_to_channel Absyn.pp_decl d out_chan;
-                           output_string out_chan "\n") (neg_decls@neg_defns);
-               close_out out_chan);
-            if !verbose then print_string stats_buffer);
-          tcenv,test3
-        );
+      ) else (
+        let (tcenv,test2) = Monad.run sg empty_env (Tc.check_test test1) in
+        let test3 = if !Flags.negelim
+	            then N.negate_test test2
+                    else N.add_generators sg tcenv test2 in
+        if !ne_simpl then
+          (let preds_to_negate = get_preds_to_negate test3 in
+          let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
+          if !Flags.debug then print_generated neg_decls;
+          let sg = run sg idx neg_decls in
+          let (neg_defns,stats_buffer) =
+            Negelim.generate_negative_defns sg preds_to_negate in
+          if !Flags.debug then print_generated neg_defns;
+	  (* WARNING: sg unused? *)
+          let _sg = run sg idx neg_defns in
+          if !dump_ne then dump_generated (neg_decls@neg_defns);
+          if !verbose then print_string stats_buffer);
+        tcenv,test3
+       )
     in
     
     if !Flags.do_checks 
@@ -610,7 +570,6 @@ let rec run1 pos decl sg idx =
 	  solve_constrs (fun ans -> 
 	    if !verbose then time_msg("");
 	    print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n"); 
-  	    let ans = simplify fvs ans in
 	    Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
 	    flush stdout;
 	    if !interactive 
@@ -620,14 +579,9 @@ let rec run1 pos decl sg idx =
 	    else succeed()
           )
 	in
-	(try 
+	(try
 	  let test5 = Translate.translate_test sg tcenv test4 in
-	  if !debug 
-	  then (
-	    Printer.print_to_channel (Internal.pp_test Isym.pp_term_sym) 
-	      test5 stdout;
-	    print_string "\n"
-	   );
+	  if !debug then print_internal Internal.pp_test test5;
 	  let fvs = Varset.elements (Internal.fvs_t test5) in
 	  flush(stdout);
 	  if not(!verbose) then log_msg("Checking depth");
@@ -637,7 +591,7 @@ let rec run1 pos decl sg idx =
 	    else log_msg(" unbounded");
 	    flush(stdout);
 	    start_timer();
-	    if !Flags.negelim 
+	    if !Flags.negelim
 	    then Check.check_ne Isym.pp_term_sym sg idx test5 (init_sc fvs) (-1)
 	    else Check.check Isym.pp_term_sym sg idx test5 (init_sc fvs) (-1);
 	    if !verbose then time_msg("")
@@ -647,18 +601,17 @@ let rec run1 pos decl sg idx =
 	    else log_msg(" "^(string_of_int i));
 	    flush(stdout);
 	    start_timer();
-	    if !Flags.negelim 
+	    if !Flags.negelim
 	    then Check.check_ne Isym.pp_term_sym sg idx test5 (init_sc fvs) i
 	    else Check.check Isym.pp_term_sym sg idx test5 (init_sc fvs) i;
-	    
-	    if !verbose then time_msg(""); 
+	    if !verbose then time_msg("");
           done;
           print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n");
-	  if validity = Some false 
+	  if validity = Some false
           then (print_string "No counterexamples found!\n";
  		raise (RuntimeError ("Specification "^name^" failed")))
-	with Success -> 
-	  if validity = Some true 
+	with Success ->
+	  if validity = Some true
 	  then (print_string "Specification fails!\n";
 		raise (RuntimeError ("Specification "^name^" failed")))
 	  else print_string "\n"
@@ -699,13 +652,9 @@ let rec run1 pos decl sg idx =
 (* | GenerateDirective("not") -> *)
 (*    let defns = Negelim.generate_negated_decls sg in *)
 (*    let sg' = run sg idx defns in *)
-(*     let decls = Negelim.generate_negated_defns sg' in *)
-(*      if !debug *)
-(*     then (print_string "GENERATED:\n" ; *)
-(*           List.iter (fun decl -> print_to_channel pp_decl decl stdout; *)
-(*             print_string "\n") decls; *)
-(*           print_string "END\n"); *)
-(*     run sg' idx decls, idx *)
+(*    let decls = Negelim.generate_negated_defns sg' in *)
+(*    if !debug then print_generated decls; *)
+(*    run sg' idx decls, idx *)
   | GenerateDirective("forallstar") -> 
      let decls = Negelim.generate_forallstars sg in
      if !debug then print_generated decls;
