@@ -518,103 +518,84 @@ let rec run1 pos decl sg idx =
       help();
       sg,idx
   | CheckDirective(name,bound,validity,test1) ->
-    
-    let tcenv,test4 =
-      if !custom_check then (
-        if !ne_simpl then (
-          let preds_to_negate = get_preds_to_negate test1 in
-          let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
-          if !Flags.debug then print_generated neg_decls;
-          let sg = run sg idx neg_decls in
-          let (neg_defns,stats_buffer) =
-            Negelim.generate_negative_defns sg preds_to_negate in
-          if !Flags.debug then print_generated neg_defns;
-	  (* WARNING: _sg unused? *)
-          let _sg = run sg idx neg_defns in
-          if !dump_ne then dump_generated (neg_decls@neg_defns);
-          if !verbose then print_string stats_buffer);
-        Monad.run sg empty_env (Tc.check_test test1)
-      ) else (
-        let (tcenv,test2) = Monad.run sg empty_env (Tc.check_test test1) in
-        let test3 = if !Flags.negelim
-	            then N.negate_test test2
-                    else N.add_generators sg tcenv test2 in
-        if !ne_simpl then
-          (let preds_to_negate = get_preds_to_negate test3 in
-          let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
-          if !Flags.debug then print_generated neg_decls;
-          let sg = run sg idx neg_decls in
-          let (neg_defns,stats_buffer) =
-            Negelim.generate_negative_defns sg preds_to_negate in
-          if !Flags.debug then print_generated neg_defns;
-	  (* WARNING: sg unused? *)
-          let _sg = run sg idx neg_defns in
-          if !dump_ne then dump_generated (neg_decls@neg_defns);
-          if !verbose then print_string stats_buffer);
-        tcenv,test3
-       )
+    let do_ne_simpl test sg =
+      let preds_to_negate = get_preds_to_negate test in
+      let neg_decls = Negelim.generate_negative_decls sg preds_to_negate in
+      if !Flags.debug then print_generated neg_decls;
+      let sg = run sg idx neg_decls in
+      let (neg_defns,stats_buffer) =
+        Negelim.generate_negative_defns sg preds_to_negate in
+      if !Flags.debug then print_generated neg_defns;
+      let sg = run sg idx neg_defns in
+      if !dump_ne then dump_generated (neg_decls@neg_defns);
+      if !verbose then print_string stats_buffer;
+      sg
     in
-    
+    let (tcenv,test2) = Monad.run sg empty_env (Tc.check_test test1) in
+    let test3 = optionally (not (!custom_check)) 
+                  (if !Flags.negelim then N.negate_test else N.add_generators sg tcenv) 
+                  test2
+    in
+    let sg = optionally (!ne_simpl) (do_ne_simpl test3) sg in
+        
     if !Flags.do_checks 
-      then 
+    then 
         if not(!tc_only) && (!errors = 0 || !interactive)
+        then (if !debug || not(!interactive)
+              then (
+                print_string ("--------\nChecking for counterexamples to \n"^name^": ");
+	              Printer.print_to_channel Absyn.pp_term test1 stdout;
+	              print_string "\n";
+	              flush stdout);
+	  log_msg (name^"\n");
+	  let rec init_sc fvs depth = 
+      solve_constrs (fun ans -> 
+        if !verbose then time_msg("");
+        print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n"); 
+        Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
+        flush stdout;
+        if !interactive 
         then (
-	  if !debug || not(!interactive)
-          then (print_string ("--------\nChecking for counterexamples to \n"^name^": ");
-	      Printer.print_to_channel Absyn.pp_term test1 stdout;
-	      print_string "\n";
-	      flush stdout
-	      );
-	log_msg (name^"\n");
-	let rec init_sc fvs depth = 
-	  solve_constrs (fun ans -> 
-	    if !verbose then time_msg("");
-	    print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n"); 
-	    Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
-	    flush stdout;
-	    if !interactive 
-	    then (
-	      let s = input_line stdin in
-	      if s = ";" then () else succeed())
-	    else succeed()
-          )
-	in
-	(try
-	  let test5 = Translate.translate_test sg tcenv test4 in
-	  if !debug then print_internal Internal.pp_test test5;
-	  let fvs = Varset.elements (Internal.fvs_t test5) in
-	  flush(stdout);
-	  if not(!verbose) then log_msg("Checking depth");
-	  start_timer2();
-	  if bound < 0 then (
-	    if !verbose then log_msg("unbounded")
-	    else log_msg(" unbounded");
-	    flush(stdout);
-	    start_timer();
-	    if !Flags.negelim
-	    then Check.check_ne Isym.pp_term_sym sg idx test5 (init_sc fvs) (-1)
-	    else Check.check Isym.pp_term_sym sg idx test5 (init_sc fvs) (-1);
-	    if !verbose then time_msg("")
-	    );
-	  for i = 1 to bound do
-            if !verbose then log_msg((string_of_int i))
-	    else log_msg(" "^(string_of_int i));
-	    flush(stdout);
-	    start_timer();
-	    if !Flags.negelim
-	    then Check.check_ne Isym.pp_term_sym sg idx test5 (init_sc fvs) i
-	    else Check.check Isym.pp_term_sym sg idx test5 (init_sc fvs) i;
-	    if !verbose then time_msg("");
-          done;
-          print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n");
-	  if validity = Some false
-          then (print_string "No counterexamples found!\n";
- 		raise (RuntimeError ("Specification "^name^" failed")))
-	with Success ->
-	  if validity = Some true
-	  then (print_string "Specification fails!\n";
-		raise (RuntimeError ("Specification "^name^" failed")))
-	  else print_string "\n"
+          let s = input_line stdin in
+          if s = ";" then () else succeed()
+        ) else succeed()
+      )
+    in
+    (try
+      let test4 = Translate.translate_test sg tcenv test3 in
+      if !debug then print_internal Internal.pp_test test4;
+      let fvs = Varset.elements (Internal.fvs_t test4) in
+      flush(stdout);
+      if not(!verbose) then log_msg("Checking depth");
+      let do_check = if !Flags.negelim then Check.check_ne else Check.check in
+      start_timer2();
+      if bound < 0 then (
+        if !verbose 
+        then log_msg("unbounded")
+        else log_msg(" unbounded");
+        flush(stdout);
+        start_timer();
+        do_check Isym.pp_term_sym sg idx test4 (init_sc fvs) (-1);
+        if !verbose then time_msg("")
+        );
+      for i = 1 to bound do
+        if !verbose 
+        then log_msg((string_of_int i))
+        else log_msg(" "^(string_of_int i));
+        flush(stdout);
+        start_timer();
+        do_check Isym.pp_term_sym sg idx test4 (init_sc fvs) i;
+        if !verbose then time_msg("");
+            done;
+            print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n");
+      if validity = Some false
+            then (print_string "No counterexamples found!\n";
+      raise (RuntimeError ("Specification "^name^" failed")))
+    with Success ->
+      if validity = Some true
+      then (print_string "Specification fails!\n";
+      raise (RuntimeError ("Specification "^name^" failed")))
+      else print_string "\n"
 	|  Sys.Break ->
 	    time_msg("");
 	    print_string("Interrupted\n");
