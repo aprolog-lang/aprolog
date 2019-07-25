@@ -13,6 +13,8 @@ type 'a sc = 'a -> unit
 val pp_constrs : 'a printer -> 'a constrs printer;;
 val pp_answer  : Tcenv.sg -> Tcenv.tcenv -> var list ->  
                  (Isym.term_sym answer) printer;;
+val pp_answer_term  : Tcenv.sg -> Tcenv.tcenv -> var list ->  
+                 (Isym.term_sym answer) printer;;
 (*val pp_evconstrs : 'a term printer -> 'a evconstrs printer;;*)
 
 

@@ -254,16 +254,16 @@ let rec pp_constrs pp constrs =
 
 
 
-let rec pp_answer sg env fvs (subst,constrs) = 
+let rec pp_answer sg env fvs (subst,constrs) =
   match fvs with
-   [] -> 
-     pp_constrs Isym.pp_term_sym constrs 
-   | x::xs -> 
+   [] ->
+     pp_constrs Isym.pp_term_sym constrs
+   | x::xs ->
      match S.finish subst x with
-       None -> pp_answer sg env xs (subst,constrs) 
-     | Some t -> 
-         let t' = Translate.untranslate_tm sg env t in 
-         text (Var.to_string' x) <+> 
+       None -> pp_answer sg env xs (subst,constrs)
+     | Some t ->
+         let t' = Translate.untranslate_tm sg env t in
+         text (Var.to_string' x) <+>
          text "=" <+>
          Absyn.pp_term t' <+>
          newline <:>
@@ -271,3 +271,24 @@ let rec pp_answer sg env fvs (subst,constrs) =
 ;;
 
 
+let rec pp_constr pp (t,x) =
+  Internal.pp_term pp t <+>
+  text "#" <+>
+  text (Var.to_string' x)
+;;
+
+
+let rec pp_answer_subst sg env (x,Some t) =
+  let t' = Translate.untranslate_tm sg env t in
+  text (Var.to_string' x) <+>
+  text "=" <+>
+  Absyn.pp_term t'
+;;
+
+let pp_answer_term sg env fvs (subst,constrs) =
+  let substs = List.map (fun x -> (x,S.finish subst x)) fvs in
+  let substs = List.filter (fun (x,ot) -> ot <> None) substs in
+  let answerdocs = List.map (pp_answer_subst sg env) substs in
+  let constrdocs = List.map (pp_constr Isym.pp_term_sym) constrs in 
+  bracket (sep (comma <:> newline) (answerdocs @ constrdocs))
+;;

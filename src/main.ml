@@ -24,6 +24,19 @@ let dumpfile = ref "";;
 let dump_ne = ref false;;
 let depen_graph = ref Dg.empty;;
 
+(* State for saving answers *)
+let save_to_file_docs = ref [];;
+let start_save_to_file () =
+  save_to_file_docs := []
+
+let do_save_to_file doc =
+  save_to_file_docs := doc :: !save_to_file_docs
+
+let stop_save_to_file filename fdoc =
+  let oc = (open_out_gen [Open_wronly;Open_creat;Open_text] 0o666 filename) in
+  Printer.doc_to_channel oc (fdoc (List.rev !save_to_file_docs));
+  close_out oc
+
 let parse_libs_var s = split (fun c -> c = ':') s;;
 lib_dirs := 
    try (parse_libs_var (Sys.getenv "APROLOG_LIBS"))@ !lib_dirs
@@ -349,6 +362,7 @@ let handle_query t sg idx =
       print_string "Yes.\n"; 
       Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
       flush stdout;
+      do_save_to_file (Unify.pp_answer_term sg tcenv fvs ans);
       if !interactive 
       then (
         let s = input_line stdin in
@@ -378,6 +392,16 @@ let rec run1 pos decl sg idx =
   Var.reset_var();
   match decl with
     Query (t) -> handle_query t sg idx
+  | SaveDirective(filename,"no_backtrack",decl) ->
+      start_save_to_file ();
+      let sg,idx = run1 pos decl sg idx in
+      stop_save_to_file filename (fun docs ->
+	text "as" <:> paren (
+	quotes (text filename) <:> comma <:> newline <:>
+	num (List.length docs) <:> comma <:> newline <:>
+	bracket (sep (comma <:> newline) docs)) <:> dot
+	) ;
+      sg,idx
   | ClauseDecl(c) ->
       if !verbose then print_clause "" (Absyn.simplify c);
       let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c) in
@@ -540,27 +564,28 @@ let rec run1 pos decl sg idx =
         
     if !Flags.do_checks 
     then 
-        if not(!tc_only) && (!errors = 0 || !interactive)
-        then (if !debug || not(!interactive)
-              then (
-                print_string ("--------\nChecking for counterexamples to \n"^name^": ");
-	              Printer.print_to_channel Absyn.pp_term test1 stdout;
-	              print_string "\n";
-	              flush stdout);
-	  log_msg (name^"\n");
-	  let rec init_sc fvs depth = 
-      solve_constrs (fun ans -> 
-        if !verbose then time_msg("");
-        print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n"); 
-        Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
-        flush stdout;
-        if !interactive 
-        then (
-          let s = input_line stdin in
-          if s = ";" then () else succeed()
-        ) else succeed()
-      )
-    in
+      if not(!tc_only) && (!errors = 0 || !interactive)
+      then (if !debug || not(!interactive)
+      then (
+        print_string ("--------\nChecking for counterexamples to \n"^name^": ");
+	Printer.print_to_channel Absyn.pp_term test1 stdout;
+	print_string "\n";
+	flush stdout);
+      log_msg (name^"\n");
+      let rec init_sc fvs depth = 
+	solve_constrs (fun ans -> 
+          if !verbose then time_msg("");
+          print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n"); 
+          Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
+          flush stdout;
+          do_save_to_file (Unify.pp_answer_term sg tcenv fvs ans);
+          if !interactive 
+          then (
+	    let s = input_line stdin in
+	    if s = ";" then () else succeed()
+           ) else succeed()
+		      )
+      in
     (try
       let test4 = Translate.translate_test sg tcenv test3 in
       if !debug then print_internal Internal.pp_test test4;

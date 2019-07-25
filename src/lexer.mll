@@ -129,7 +129,8 @@ rule lex =
       | "#check"              { CHECK }
       | "#validate"           { VALIDATE }
       | "#invalidate"         { INVALIDATE }
-      | "#save_to_file"         { SAVETOFILE }
+      | "#save_to_file"       { SAVETOFILE }
+      | "#query"              { QUERY }
 (*      | "#gen"                { GEN_DIR }*)
 
       | "lambda"              { LAMBDA }
