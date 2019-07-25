@@ -584,7 +584,7 @@ let rec run1 pos decl sg idx =
 	    let s = input_line stdin in
 	    if s = ";" then () else succeed()
            ) else succeed()
-		      )
+	 )
       in
     (try
       let test4 = Translate.translate_test sg tcenv test3 in
