@@ -7,7 +7,7 @@ open Util;;
 open Tcenv;;
 open Config;;
 open Types;;
-module Dg = Dependency_graph;;  
+module Dg = Dependency_graph;;
 module N = Negelim;;
 
 Random.self_init();;
@@ -38,28 +38,28 @@ let stop_save_to_file filename fdoc =
   close_out oc
 
 let parse_libs_var s = split (fun c -> c = ':') s;;
-lib_dirs := 
+lib_dirs :=
    try (parse_libs_var (Sys.getenv "APROLOG_LIBS"))@ !lib_dirs
    with _ -> !lib_dirs
 
-let log_msg msg = 
-  print_string msg; 
+let log_msg msg =
+  print_string msg;
   flush stdout;
   if !log then output_string stderr msg;
 ;;
 
 
-let add_lib_dir s = 
+let add_lib_dir s =
   lib_dirs := s::!lib_dirs
 ;;
 
-let set_depth_first_bound i = 
+let set_depth_first_bound i =
   Flags.depth_first_bound := Some i;;
 
 let timer = ref 0.0;;
-let start_timer () = 
+let start_timer () =
   timer := Sys.time();;
-let time_msg msg = 
+let time_msg msg =
   let diff = Sys.time() -. !timer in
   log_msg (msg^"\t"^(string_of_float diff)^"\n");
   flush stdout
@@ -67,31 +67,31 @@ let time_msg msg =
 
 
 let timer2 = ref 0.0;;
-let start_timer2 () = 
+let start_timer2 () =
   timer2 := Sys.time();;
-let time2 () = 
+let time2 () =
   Sys.time() -. !timer2
 ;;
 
-let find_local file = 
+let find_local file =
   if Sys.file_exists file then Some file else None
 ;;
 
 
-let find_lib file = 
-  let rec find l = 
-    match l with 
+let find_lib file =
+  let rec find l =
+    match l with
       [] -> None
-    | d::ds -> 
-	if Sys.file_exists (d^"/"^file) 
-	then Some (d^"/"^file) 
+    | d::ds ->
+	if Sys.file_exists (d^"/"^file)
+	then Some (d^"/"^file)
 	else find ds
   in find !lib_dirs
 ;;
 
 
 
-let quit() = 
+let quit() =
   print_string "\nGoodbye.\n";
   exit(0)
 ;;
@@ -106,11 +106,11 @@ let succeed() = raise Success;;
 let lexbuf = Lexing.from_channel stdin;;
 
 
-let get_lineno () = 
+let get_lineno () =
   Lineno.lineno()
 ;;
 
-let parse file = 
+let parse file =
   let ic = open_in file in
   Lineno.reset();
   Lineno.enter_file file;
@@ -118,28 +118,28 @@ let parse file =
 ;;
 
 
-let parse_input_line () = 
+let parse_input_line () =
   Lineno.reset();
   Parser.parse_input_line Lexer.lex lexbuf
 ;;
 
 
-let get_decls find_file file = 
-  match find_file file with 
-    Some file' -> 
-      let decls = 
+let get_decls find_file file =
+  match find_file file with
+    Some file' ->
+      let decls =
 	try parse file'
-	with Parsing.Parse_error -> 
+	with Parsing.Parse_error ->
 	  Util.error("Syntax error near ["^Lineno.filename()^":"
 		       ^(string_of_int (get_lineno()))^"]\n")
-	| Lexer.LexFail msg -> 
+	| Lexer.LexFail msg ->
 	    Util.error("Error near line ["^Lineno.filename()^":"
-			 ^(string_of_int (get_lineno()))^"]: "^msg^"\n") 
+			 ^(string_of_int (get_lineno()))^"]: "^msg^"\n")
       in
       decls
   |  None -> print_string (file^": File not found\n"); []
 ;;
-  
+
 
 let forall f l = List.fold_left (&&) true (List.map f l);;
 let rec mem x l = match l with
@@ -148,21 +148,21 @@ let rec mem x l = match l with
 let subset l m = forall (fun x -> mem x m) l;;
 
 (* TODO: Solve any pi X # X constraints for X. *)
-let rec solve_constrs sc ans = 
-  if not(!Flags.consistency_check) then sc ans 
-  else 
-  let (subst,constrs) = ans in 
-  let rec check_constrs constrs sc = 
-      match constrs with 
+let rec solve_constrs sc ans =
+  if not(!Flags.consistency_check) then sc ans
+  else
+  let (subst,constrs) = ans in
+  let rec check_constrs constrs sc =
+      match constrs with
         (Internal.Name a,x)::constrs' -> check_constrs constrs' sc
-      | (Internal.Susp(pi,_,y) as v,x)::constrs' -> 
-         if Var.eq x y 
+      | (Internal.Susp(pi,_,y) as v,x)::constrs' ->
+         if Var.eq x y
          then (* TODO: This is unsafe if x is not a name-variable *)
 	   let support = Perm.supp pi in
-	   let rec try_all support sc = 
-	     match support with 
+	   let rec try_all support sc =
+	     match support with
 	       [] -> ()
-	     | (a::support') -> 
+	     | (a::support') ->
 		 (Unify.unify Isym.term_sym_eq v (Internal.Name a) (solve_constrs sc) ans;
 		  try_all support' sc)
 	   in
@@ -173,8 +173,8 @@ let rec solve_constrs sc ans =
   in check_constrs constrs sc
 ;;
 
-let handleTcFail pos msg = 	
-  (match pos with 
+let handleTcFail pos msg =
+  (match pos with
     None -> print_string ("***TYPE ERROR***\n"^msg^"\n")
   | Some p -> print_string ("***TYPE ERROR*** ["
 			    ^Pos.pos2s p
@@ -184,7 +184,7 @@ let handleTcFail pos msg =
 ;;
 
 
-let help() = 
+let help() =
   let doc = text "Interpreter directives:" <:> newline
       <:> text "#quit.\t\t\tQuit AlphaProlog" <:> newline
       <:> text "#help.\t\t\tPrint this message" <:> newline
@@ -195,7 +195,7 @@ let help() =
       <:> text "#infix<dir> <id> <num>.\tMake identifier infix with associativity <dir> (l,r,n)"<:> newline
       <:> text "\t\t\tand precedence <num> (1..9)"<:>newline <:> newline
       <:> text "Keystroke commands:" <:> newline
-      <:> text "<Control-C>\t\tInterrupt execution" <:> newline 
+      <:> text "<Control-C>\t\tInterrupt execution" <:> newline
       <:> text "<Control-D>\t\tQuit AlphaProlog from prompt" <:> newline <:> newline
       <:> text "Queries:"<:> newline
       <:> text "<query>.\t\tPose a query." <:> newline<:> newline
@@ -208,58 +208,58 @@ let help() =
 *)
   in
   Printer.doc_to_channel stdout doc
-  
 
-let check_disjoint_vars vs = 
-  let rec chk s vs = 
-    match vs with 
+
+let check_disjoint_vars vs =
+  let rec chk s vs =
+    match vs with
       [] -> ()
-    | v::vs -> 
-	if Varset.mem v s 
+    | v::vs ->
+	if Varset.mem v s
 	then raise (Tc.TcFail ("Repeated variable "^Var.to_string' v^" in type abbreviation"))
 	else chk (Varset.add v s) vs
   in chk Varset.empty vs
 ;;
- 
-(* Preprocess declarations to check that #gen directives aren't present in 
-source, #check directives aren't followed by ordinary declarations, and 
+
+(* Preprocess declarations to check that #gen directives aren't present in
+source, #check directives aren't followed by ordinary declarations, and
 insert #gen directives before the first #check. *)
 
 let preprocess_decls decls0 =
 
-(* HACK: Sanity-check the declarations to ensure that there are no 
-generate directives in the source, and there is no ordinary code 
+(* HACK: Sanity-check the declarations to ensure that there are no
+generate directives in the source, and there is no ordinary code
 after a #check directive. *)
 
-  let rec sanity_check checks_only decls = 
+  let rec sanity_check checks_only decls =
     match decls with
       [] -> ()
-    | {pos=pos;rdecl=GenerateDirective(x)}::_ -> 
+    | {pos=pos;rdecl=GenerateDirective(x)}::_ ->
 	Util.impos "Generate directives not allowed in source programs"
-    | {pos=pos;rdecl=CheckDirective(name,bound,t,_)}::decls -> 
+    | {pos=pos;rdecl=CheckDirective(name,bound,t,_)}::decls ->
 	sanity_check true decls
-    | {pos=pos;rdecl=QuitDirective}::decls -> 
+    | {pos=pos;rdecl=QuitDirective}::decls ->
 	sanity_check true decls
     | decl::decls ->
-	if checks_only 
+	if checks_only
 	then  Util.impos "Ordinary code is not allowed after #check directives"
 	else sanity_check checks_only decls
   in
-  
-(* HACK: Look for the first occurrence of a check directive 
-   and insert the appropriate generators before it. 
+
+(* HACK: Look for the first occurrence of a check directive
+   and insert the appropriate generators before it.
 *)
-  let rec insert_generation decls = 
+  let rec insert_generation decls =
     match decls with
       [] -> []
-    | {pos=pos;rdecl=CheckDirective(name,bound, t,_)}::_ -> 
+    | {pos=pos;rdecl=CheckDirective(name,bound, t,_)}::_ ->
 	let mkdecl rdecl = {pos=pos; rdecl=rdecl} in
-	let l1 = 
-	  if(!generate_terms) 
-          then [mkdecl (GenerateDirective("gen"))] 
+	let l1 =
+	  if(!generate_terms)
+          then [mkdecl (GenerateDirective("gen"))]
           else [] in
-	let l2 = 
-	  if(!generate_negation) 
+	let l2 =
+	  if(!generate_negation)
           then
             [mkdecl (GenerateDirective("eq"));
              mkdecl (GenerateDirective("fresh"));
@@ -295,7 +295,7 @@ let get_preds_to_negate test =
       (fun neg_pred prev ->
          let len = String.length neg_pred in
          let pos_pred = String.sub neg_pred 4 (len - 4) in
-         String_set.add pos_pred prev) neg_preds String_set.empty in 
+         String_set.add pos_pred prev) neg_preds String_set.empty in
   let (dep_graph,preds_to_negate) =
     Dg.get_required_preds preds !depen_graph in
   if !Flags.debug
@@ -314,7 +314,7 @@ let print_generated decls =
 let dump_generated decls =
   let oc = open_dump !dumpfile in
   List.iter
-    (fun decl -> print_to_channel pp_decl decl oc; 
+    (fun decl -> print_to_channel pp_decl decl oc;
       output_string oc "\n")
     decls;
   close_out oc
@@ -337,9 +337,9 @@ let print_internal pp t =
 
 (* TODO: factor this into:
    - a function that sets up evaluation and constructs a lazy stream of answer
-   - a function that handles interactive query execution, printing 
+   - a function that handles interactive query execution, printing
      next answers and getting next stream element if requested
-   - alternative stream handlers to handle functions 
+   - alternative stream handlers to handle functions
  *)
 
 type 'a stream = {next: unit -> ('a * 'a stream) option}
@@ -357,24 +357,24 @@ let handle_answer_stream_interactively sg tcenv fvs stream =
   in loop stream
 
 let handle_query t sg idx =
-  let init_sc tcenv fvs = 
-    solve_constrs (fun ans -> 
-      print_string "Yes.\n"; 
+  let init_sc tcenv fvs =
+    solve_constrs (fun ans ->
+      print_string "Yes.\n";
       Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
       flush stdout;
       do_save_to_file (Unify.pp_answer_term sg tcenv fvs ans);
-      if !interactive 
+      if !interactive
       then (
         let s = input_line stdin in
         if s = ";" then () else succeed())
       else succeed()
     )
-  in 
+  in
   let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
   if not(!tc_only) && (!errors = 0 || !interactive)
   then (
     if !debug || not(!interactive) then print_term "--------\nQuery: " g;
-    (try 
+    (try
       let g' = Translate.translate_goal sg tcenv g in
       if !debug then print_internal Internal.pp_goal g';
       let fvs = Varset.elements (Internal.fvs_g g') in
@@ -408,14 +408,14 @@ let rec run1 pos decl sg idx =
       if !verbose && !debug then print_clause "Typechecked:" p;
       let (tcenv,p) = (* Linearization pass *)
 	optionally (!Flags.linearize && pos <> None)
-          (fun (tcenv,p) -> 
+          (fun (tcenv,p) ->
 	    let c' = Absyn.linearize_prog p in
 	    let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c')  in
 	    if !verbose then print_clause "Linearized:" p;
 	    (tcenv,p)) (tcenv,p) in
       let (tcenv,p) = (* Well-quantification pass *)
         optionally (!Flags.quantify && pos <> None)
-          (fun (tcenv,p) -> 
+          (fun (tcenv,p) ->
             let c = Absyn.well_quantify_prog p in
             let (tcenv,p) = Monad.run sg empty_env (Tc.check_prog c) in
             if !verbose then print_clause "Well-quantified:" p;
@@ -429,7 +429,7 @@ let rec run1 pos decl sg idx =
         depen_graph := updated_dep_graph);
 
       if not(!tc_only) && (!errors = 0 || !interactive)
-      then 
+      then
 	(let p' = Translate.translate_prog sg tcenv p in
 	let fas = Varset.elements(Internal.fas_p p') in
 	let fvs = Varset.elements(Internal.fvs_p p') in
@@ -438,39 +438,39 @@ let rec run1 pos decl sg idx =
 	if !debug then print_internal Internal.pp_prog p';
 	Index.add idx p');
       sg,idx
-  | NamespaceDecl(sym,decls) -> 
+  | NamespaceDecl(sym,decls) ->
       if !interactive || !verbose
       then (print_string ("namespace "^sym^" (\n"));
       Tcenv.enter_namespace sg sym;
       let sg' = run sg idx decls in
       Tcenv.exit_namespace sg;
-      if !interactive || !verbose 
+      if !interactive || !verbose
       then print_string ").\n";
       sg',idx
-  | UseDirective(file) -> 
+  | UseDirective(file) ->
       let old_interactive = !interactive in
       interactive := false;
       let decls = get_decls find_lib file in
       let sg' = run sg idx decls in
       interactive := old_interactive;
       sg',idx
-  | TraceDirective(i) -> 
+  | TraceDirective(i) ->
       trace := i;
       sg,idx
-  | KindDecl(s,k) -> 
+  | KindDecl(s,k) ->
       if !interactive || !verbose
       then (Printer.print_to_channel pp_decl {pos=pos;rdecl=decl} stdout;
 	    print_string "\n");
       let sg,_ = Tcenv.add_kind_decl sg s k None in
       sg,idx
-  | SymDecl (f,ty) -> 
+  | SymDecl (f,ty) ->
       let (tcenv,ty) = Monad.run sg empty_env (Tc.check_ty ty false DataKd) in
       if !interactive || !verbose
       then (Printer.print_to_channel pp_decl {pos=pos;rdecl=SymDecl(f,ty)} stdout;
 	    print_string "\n");
       let sg,_ = Tcenv.add_sym_decl sg f false false true ty in
       sg, idx
-  | PredDecl(f,tys,is_user,is_abbrev) -> 
+  | PredDecl(f,tys,is_user,is_abbrev) ->
       if !interactive || !verbose
       then (Printer.print_to_channel pp_decl {pos=pos;rdecl=decl} stdout;
 	    print_string "\n");
@@ -481,47 +481,47 @@ let rec run1 pos decl sg idx =
 	    print_string "\n");
       let sg,_ = Tcenv.add_sym_decl sg f false is_abbrev is_user ty in
       sg, idx
-  | TypeDefn (s,vs,ty) as decl -> 
+  | TypeDefn (s,vs,ty) as decl ->
       if !interactive || !verbose
       then (Printer.print_to_channel pp_decl {pos=pos;rdecl=decl} stdout;
 	    print_string "\n");
       check_disjoint_vars vs;
-      let ((_,tctx,_,_),ty) = Monad.run sg empty_env 
+      let ((_,tctx,_,_),ty) = Monad.run sg empty_env
 	  (Tc.check_ty ty true TypeKd) in
-      let ks = 
-	try List.map (fun v -> Varmap.find v tctx) vs 
-	with Not_found -> 
+      let ks =
+	try List.map (fun v -> Varmap.find v tctx) vs
+	with Not_found ->
 	  raise (Tc.TcFail "Abbreviation has unconstrained type variables") in
-      let ks = List.map (function NameKd -> NameK 
+      let ks = List.map (function NameKd -> NameK
 	                 |TypeKd|DataKd -> TypeK) ks in
       let k = List.fold_right (fun k k' -> ArrowK(k,k')) ks TypeK in
       (*let u = Unique.get() in
-      Nstbl.add sg.ksg (Nstbl.Rel(Nstbl.Base(s))) 
+      Nstbl.add sg.ksg (Nstbl.Rel(Nstbl.Base(s)))
 	(k,u,Some (Tc.reflect_ty vs ty));
       let s' = Nstbl.resolve sg.ksg (Nstbl.Rel (Nstbl.Base s)) in
       Hashtbl.add sg.stbl u s'; *)
       let sg,_ = Tcenv.add_kind_decl sg s k (Some (Tc.reflect_ty vs ty)) in
       sg,idx
-  | FuncDecl(f,tys,ty) as decl -> 
+  | FuncDecl(f,tys,ty) as decl ->
       if !interactive || !verbose
       then (Printer.print_to_channel pp_decl {pos=pos;rdecl=decl} stdout;
 	    print_string "\n");
       let ty = List.fold_right (fun t u -> ArrowTy (t,u)) tys ty in
       let (_,ty) = Monad.run sg empty_env (Tc.check_ty ty false TypeKd) in
-      let sg,_ = Tcenv.add_sym_decl sg f true false false ty in 
+      let sg,_ = Tcenv.add_sym_decl sg f true false false ty in
       sg,idx
-  | BuiltinFuncDecl (sym,tys,ty,f) as decl -> 
+  | BuiltinFuncDecl (sym,tys,ty,f) as decl ->
       if !interactive || !verbose
       then (Printer.print_to_channel pp_decl {pos=pos;rdecl=decl} stdout;
 	    print_string "\n");
       let ty = List.fold_right (fun t u -> ArrowTy (t,u)) tys ty in
       let (_,ty) = Monad.run sg empty_env (Tc.check_ty ty false TypeKd) in
-      let sg,u = Tcenv.add_sym_decl sg sym false false false ty in 
+      let sg,u = Tcenv.add_sym_decl sg sym false false false ty in
       Runtime.bind u f;
       sg,idx
   | InfixDecl (_,_,_) -> sg,idx
-  | TypeQuery (t) -> 
-      let ((_,tctx,ctx,_),(t',ty)) = 
+  | TypeQuery (t) ->
+      let ((_,tctx,ctx,_),(t',ty)) =
 	Monad.run sg empty_env (Tc.infer_term t) in
       Printer.print_to_channel (Varmap.pp_map Tcenv.pp_symk) ctx stdout;
       print_string " |- ";
@@ -531,8 +531,8 @@ let rec run1 pos decl sg idx =
       nl();
       sg, idx
   | QuitDirective -> quit()
-  | OpenDirective s -> 
-      (try 
+  | OpenDirective s ->
+      (try
 	Nstbl.open_ns sg.ksg s;
 	Nstbl.open_ns sg.tsg s;
       with Not_found -> print_string ("Unknown namespace "^Nstbl.p2s s)
@@ -556,14 +556,14 @@ let rec run1 pos decl sg idx =
       sg
     in
     let (tcenv,test2) = Monad.run sg empty_env (Tc.check_test test1) in
-    let test3 = optionally (not (!custom_check)) 
-                  (if !Flags.negelim then N.negate_test else N.add_generators sg tcenv) 
+    let test3 = optionally (not (!custom_check))
+                  (if !Flags.negelim then N.negate_test else N.add_generators sg tcenv)
                   test2
     in
     let sg = optionally (!ne_simpl) (do_ne_simpl test3) sg in
-        
-    if !Flags.do_checks 
-    then 
+
+    if !Flags.do_checks
+    then
       if not(!tc_only) && (!errors = 0 || !interactive)
       then (if !debug || not(!interactive)
       then (
@@ -572,14 +572,14 @@ let rec run1 pos decl sg idx =
 	print_string "\n";
 	flush stdout);
       log_msg (name^"\n");
-      let rec init_sc fvs depth = 
-	solve_constrs (fun ans -> 
+      let rec init_sc fvs depth =
+	solve_constrs (fun ans ->
           if !verbose then time_msg("");
-          print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n"); 
+          print_string ("\nTotal: " ^ string_of_float (time2()) ^ " s:\n");
           Printer.print_to_channel (Unify.pp_answer sg tcenv fvs) ans stdout;
           flush stdout;
           do_save_to_file (Unify.pp_answer_term sg tcenv fvs ans);
-          if !interactive 
+          if !interactive
           then (
 	    let s = input_line stdin in
 	    if s = ";" then () else succeed()
@@ -595,7 +595,7 @@ let rec run1 pos decl sg idx =
       let do_check = if !Flags.negelim then Check.check_ne else Check.check in
       start_timer2();
       if bound < 0 then (
-        if !verbose 
+        if !verbose
         then log_msg("unbounded")
         else log_msg(" unbounded");
         flush(stdout);
@@ -604,7 +604,7 @@ let rec run1 pos decl sg idx =
         if !verbose then time_msg("")
         );
       for i = 1 to bound do
-        if !verbose 
+        if !verbose
         then log_msg((string_of_int i))
         else log_msg(" "^(string_of_int i));
         flush(stdout);
@@ -651,7 +651,7 @@ let rec run1 pos decl sg idx =
      if !dump_ne then dump_generated decls;
      run sg idx decls, idx
   (* TODO: after negelim interface is adapted use commented code for generating not *)
-  | GenerateDirective("not") -> 
+  | GenerateDirective("not") ->
      let decls = Negelim.generate_negation sg in
      if !debug then print_generated decls;
      run sg idx decls, idx
@@ -661,31 +661,31 @@ let rec run1 pos decl sg idx =
 (*    let decls = Negelim.generate_negated_defns sg' in *)
 (*    if !debug then print_generated decls; *)
 (*    run sg' idx decls, idx *)
-  | GenerateDirective("forallstar") -> 
+  | GenerateDirective("forallstar") ->
      let decls = Negelim.generate_forallstars sg in
      if !debug then print_generated decls;
      run sg idx decls, idx
 
 
-and run sg idx rest = 
-  match rest with 
+and run sg idx rest =
+  match rest with
     [] -> sg
-  | decl::decls -> 
-      let sg,idx = 
-	try run1 decl.pos decl.rdecl sg idx 
+  | decl::decls ->
+      let sg,idx =
+	try run1 decl.pos decl.rdecl sg idx
 	with Tc.TcFail msg -> (
 	  handleTcFail decl.pos msg;
 	  sg,idx
-	 ) 
+	 )
       in
       run sg idx decls
 ;;
 
 
-let rec toploop sg idx = 
+let rec toploop sg idx =
   print_string "?- ";
   flush stdout;
-  try 
+  try
     start_timer();
     let decls0 = parse_input_line() in
     if !verbose then time_msg("Parsing");
@@ -694,24 +694,24 @@ let rec toploop sg idx =
     let sg = run sg idx decls in
     if !verbose then time_msg("Running");
     toploop sg idx
-  with 
-    Parsing.Parse_error -> 
+  with
+    Parsing.Parse_error ->
       print_string ("I don't understand.  (Try \"#help.\")\n");
       toploop sg idx
-  | Lexer.LexFail msg -> 
+  | Lexer.LexFail msg ->
       print_string ("I don't understand.  (Try \"#help.\")\n");
-      toploop sg idx 
-  | End_of_file -> 
+      toploop sg idx
+  | End_of_file ->
       quit()
-  | Util.Impos msg -> 
+  | Util.Impos msg ->
       print_string ("Internal error: "^msg^".\n"^
 		    "(This is my fault, not yours.  "^
 		    "Please submit a bug report so I can fix the problem).\n");
       toploop sg idx
-  | Error msg -> 
+  | Error msg ->
       print_string ("I don't understand.\n"^msg^".\n");
       toploop sg idx
-  | RuntimeError msg -> 
+  | RuntimeError msg ->
       print_string ("A runtime error occurred:\n"^msg^".\n");
       toploop sg idx
   | Sys.Break -> (* No effort at atomicity here. *)
@@ -723,21 +723,21 @@ let rec set_dumpfile filename =
   if Sys.file_exists filename then Sys.remove filename;
   dumpfile := filename;
   dump_ne := true
-  
-let main args = 
+
+let main args =
   (* Banner hard to read because of escapes ... *)
   (* Looks like this
-          ______                   
-          ||   \\    /|           
-          ||    )    ||           
+          ______
+          ||   \\    /|
+          ||    )    ||
     __  _ ||___/_ __ ||  __   __  _
    / \\/  || \\/ / \\|| / \\ / \\/
-  (   )\  ||  ||(   )||(   )(   ) 
-  \\_/ \\_||  ||\\_/ ||\\_/ \\_/  
-          /   /      /      ((__ 
-                            \\__))  
+  (   )\  ||  ||(   )||(   )(   )
+  \\_/ \\_||  ||\\_/ ||\\_/ \\_/
+          /   /      /      ((__
+                            \\__))
      *)
-  let banner = 
+  let banner =
     "          ______                  \n"^
     "          ||   \\\\    /|          \n"^
     "          ||    )    ||           \n"^
@@ -748,7 +748,7 @@ let main args =
     "          /   /      /      ((__ \n"^
     "                            \\\\__))  \n"
   in print_string banner;
-  
+
   Sys.catch_break true; (* ctrl-C will raise Break *)
   let rsg = ref (Tcenv.init_sg()) in
   let idx = Index.create 100 in
@@ -760,7 +760,7 @@ let main args =
   Flags.forbid_prop := true;
   Flags.forbid_higher_order := true;
   (* FIX end hack *)
-  let arg_check_negelim () = 
+  let arg_check_negelim () =
     do_checks := true;
     negelim := true;
     extensional_forall := true;
@@ -770,8 +770,8 @@ let main args =
     quantify := true;
     simplify_clauses := true;
 (*    strict_new_occurs := true *)
-  in 
-  let arg_check_negelim_minus () = 
+  in
+  let arg_check_negelim_minus () =
     do_checks := true;
     negelim := true;
     extensional_forall := false;
@@ -781,8 +781,8 @@ let main args =
     quantify := true;
     simplify_clauses := true;
     (*    strict_new_occurs := true*)
-  in 
-  let arg_check_negfail () = 
+  in
+  let arg_check_negfail () =
     do_checks := true;
     generate_terms := true
 (*    strict_new_occurs := false*)
@@ -808,12 +808,12 @@ let main args =
     simplify_clauses := true;
     quantify := true;
     ne_simpl := true
-  in  let do_file file = 
+  in  let do_file file =
     print_string ("Reading file "^file^"...\n");
     start_timer();
-    let decls0 = 
-      try 
-	get_decls find_local file 
+    let decls0 =
+      try
+	get_decls find_local file
       with Error msg -> print_string msg; exit(1)
     in
     let decls = preprocess_decls decls0 in
@@ -822,26 +822,26 @@ let main args =
     let sg = run !rsg idx decls in
     rsg := sg;
     if !verbose then time_msg "Running"
-  in 
+  in
   let spec = [ ("-b", Arg.Int(set_depth_first_bound), "Depth-first search bound");
 	       (* ("-cc", Arg.Set(consistency_check), "Check consistency of answer constraints");
 	       ("-check", Arg.Set(do_checks), "Search for counterexamples to #check specifications"); *)
 	       ("-d", Arg.Set(debug), "Enable debugging messages");
-               (* ("-ef", Arg.Set(extensional_forall), 
+               (* ("-ef", Arg.Set(extensional_forall),
 		"Extensional universal quantifier (experimental)");*)
-	       ("-hh", Arg.Clear(horn_clauses_only), 
-		"Permit hereditary Harrop programs (experimental)"); 
-	       ("-ng", Arg.Set(new_goal_only), 
+	       ("-hh", Arg.Clear(horn_clauses_only),
+		"Permit hereditary Harrop programs (experimental)");
+	       ("-ng", Arg.Set(new_goal_only),
 		"Restrict to new-goal Horn clauses");
-	       ("-s", Arg.Set(simplify_clauses), 
+	       ("-s", Arg.Set(simplify_clauses),
 		"Simplify generated clauses");
-	       ("-l", Arg.Set(linearize), 
+	       ("-l", Arg.Set(linearize),
 		"Linearize clauses");
-	       ("-wq", Arg.Set(quantify), 
+	       ("-wq", Arg.Set(quantify),
 		"Normalize and well-quantify clauses");
-	       ("-skip-occurs", Arg.Set(skip_occurs_check), 
+	       ("-skip-occurs", Arg.Set(skip_occurs_check),
 		"Skip occurs check");
-	       ("-q", Arg.Set(quit_early), 
+	       ("-q", Arg.Set(quit_early),
 		"Quit interpreting after reading all input");
 	       ("-L", Arg.String(add_lib_dir), "Add directory to library search path");
 	       ("-so", Arg.Set(strict_new_occurs),
@@ -862,7 +862,7 @@ let main args =
                ("-check-ne-simpl-minus", Arg.Unit(arg_check_ne_simpl_minus), "Like -check-ne-simpl but without extensional quantification");
                ("-nd", Arg.String(set_dumpfile), "Dump negative predicates in the specified file");
                ("-cc",Arg.Set(custom_check), "Disables manipulation of the check directive, letting the user specify generators or negative predicates.");
-               ("-a",Arg.Set(interactive), "Enables interactive mode also during specification checking") 
+               ("-a",Arg.Set(interactive), "Enables interactive mode also during specification checking")
 	     ]
   in
   print_string ("AlphaProlog "^version^"\n");
@@ -872,7 +872,7 @@ let main args =
   if !errors = 0 && not (!quit_early)
   then (interactive := true;
 	toploop !rsg idx)
-  else (if !errors != 0 
+  else (if !errors != 0
         then  (print_string (string_of_int !errors ^ " errors\n");
 	       exit(1)))
 ;;
