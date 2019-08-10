@@ -26,8 +26,10 @@ let depen_graph = ref Dg.empty;;
 
 (* State for saving answers *)
 let save_to_file_docs = ref [];;
-let start_save_to_file () =
-  save_to_file_docs := []
+let save_to_file_backtrack = ref false;;
+let start_save_to_file (b) =
+  save_to_file_docs := [];
+  save_to_file_backtrack := b
 
 let do_save_to_file doc =
   save_to_file_docs := doc :: !save_to_file_docs
@@ -35,6 +37,7 @@ let do_save_to_file doc =
 let stop_save_to_file filename fdoc =
   let oc = (open_out_gen [Open_wronly;Open_creat;Open_text] 0o666 filename) in
   Printer.doc_to_channel oc (fdoc (List.rev !save_to_file_docs));
+  save_to_file_backtrack := false;
   close_out oc
 
 let parse_libs_var s = split (fun c -> c = ':') s;;
@@ -367,7 +370,7 @@ let handle_query t sg idx =
       then (
         let s = input_line stdin in
         if s = ";" then () else succeed())
-      else succeed()
+      else if !save_to_file_backtrack then () else succeed()
     )
   in
   let (tcenv,g) = Monad.run sg empty_env (Tc.check_goal t) in
@@ -393,7 +396,7 @@ let rec run1 pos decl sg idx =
   match decl with
     Query (t) -> handle_query t sg idx
   | SaveDirective(filename,"no_backtrack",decl) ->
-      start_save_to_file ();
+      start_save_to_file (false);
       let sg,idx = run1 pos decl sg idx in
       stop_save_to_file filename (fun docs ->
 	text "as" <:> paren (
@@ -401,6 +404,19 @@ let rec run1 pos decl sg idx =
 	num (List.length docs) <:> comma <:> newline <:>
 	bracket (sep (comma <:> newline) docs)) <:> dot
 	) ;
+      sg,idx
+  | SaveDirective(filename,"backtrack",decl) ->
+      start_save_to_file (true);
+      let sg,idx = run1 pos decl sg idx in
+      stop_save_to_file filename (fun docs ->
+	text "as" <:> paren (
+	quotes (text filename) <:> comma <:> newline <:>
+	num (List.length docs) <:> comma <:> newline <:>
+	bracket (sep (comma <:> newline) docs)) <:> dot
+	) ;
+      sg,idx
+  | SaveDirective(_,s,_) ->
+      print_string ("Invalid #save_to_file parameter: " ^ s ^ "\n");
       sg,idx
   | ClauseDecl(c) ->
       if !verbose then print_clause "" (Absyn.simplify c);
@@ -583,7 +599,7 @@ let rec run1 pos decl sg idx =
           then (
 	    let s = input_line stdin in
 	    if s = ";" then () else succeed()
-           ) else succeed()
+           ) else if !save_to_file_backtrack then () else succeed()
 	 )
       in
     (try
