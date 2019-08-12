@@ -282,7 +282,7 @@ after a #check directive. *)
             if (not(!ne_simpl) && !generate_negation)
             then [mkdecl (GenerateDirective("not"))]
             else [] in
-	  l1 @ l2 @ l3 @ decls
+	  l1 @ l2 @ l3 @ (decl::decls)
 	) else (
 	 decl::insert_generation(decls)
 	)
