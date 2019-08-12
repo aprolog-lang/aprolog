@@ -35,7 +35,7 @@ let do_save_to_file doc =
   save_to_file_docs := doc :: !save_to_file_docs
 
 let stop_save_to_file filename fdoc =
-  let oc = (open_out_gen [Open_wronly;Open_creat;Open_text] 0o666 filename) in
+  let oc = (open_out_gen [Open_wronly;Open_creat;Open_text;Open_trunc] 0o666 filename) in
   Printer.doc_to_channel oc (fdoc (List.rev !save_to_file_docs));
   save_to_file_backtrack := false;
   close_out oc
@@ -241,6 +241,8 @@ after a #check directive. *)
 	Util.impos "Generate directives not allowed in source programs"
     | {pos=pos;rdecl=CheckDirective(name,bound,t,_)}::decls ->
 	sanity_check true decls
+    | {pos=pos;rdecl=SaveDirective(_,_,rdecl)}::decls ->
+	sanity_check checks_only ({pos=pos;rdecl=rdecl}::decls)
     | {pos=pos;rdecl=QuitDirective}::decls ->
 	sanity_check true decls
     | decl::decls ->
@@ -253,29 +255,37 @@ after a #check directive. *)
    and insert the appropriate generators before it.
 *)
   let rec insert_generation decls =
+    let rec is_check rdecl =
+      match rdecl with
+	CheckDirective(_,_,_,_) -> true
+      | SaveDirective(_,_,rdecl) -> is_check rdecl
+      | _ -> false
+    in
     match decls with
       [] -> []
-    | {pos=pos;rdecl=CheckDirective(name,bound, t,_)}::_ ->
-	let mkdecl rdecl = {pos=pos; rdecl=rdecl} in
-	let l1 =
-	  if(!generate_terms)
-          then [mkdecl (GenerateDirective("gen"))]
-          else [] in
-	let l2 =
-	  if(!generate_negation)
-          then
-            [mkdecl (GenerateDirective("eq"));
-             mkdecl (GenerateDirective("fresh"));
-             mkdecl (GenerateDirective("neq"));
-	     mkdecl (GenerateDirective("nfresh"))]
-          else [] in
-        let l3 =
-          if (not(!ne_simpl) && !generate_negation)
-          then [mkdecl (GenerateDirective("not"))]
-          else [] in
-	l1 @ l2 @ l3 @ decls
     | decl::decls ->
-	decl:: insert_generation(decls)
+	if is_check decl.rdecl then (
+	  let mkdecl rdecl = {pos=decl.pos; rdecl=rdecl} in
+	  let l1 =
+	    if(!generate_terms)
+            then [mkdecl (GenerateDirective("gen"))]
+            else [] in
+	  let l2 =
+	    if(!generate_negation)
+            then
+              [mkdecl (GenerateDirective("eq"));
+               mkdecl (GenerateDirective("fresh"));
+               mkdecl (GenerateDirective("neq"));
+	       mkdecl (GenerateDirective("nfresh"))]
+            else [] in
+          let l3 =
+            if (not(!ne_simpl) && !generate_negation)
+            then [mkdecl (GenerateDirective("not"))]
+            else [] in
+	  l1 @ l2 @ l3 @ decls
+	) else (
+	 decl::insert_generation(decls)
+	)
   in
   sanity_check false decls0;
   insert_generation decls0
