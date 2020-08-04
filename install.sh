@@ -2,23 +2,27 @@
 APROLOG_BASE=$1
 APROLOG_INSTALL=$2
 
-if [ -d "$APROLOG_INSTALL" ]; then 
- echo "Directory $APROLOG_INSTALL already exists"
-else 
- mkdir $APROLOG_INSTALL
- mkdir $APROLOG_INSTALL/bin
- mkdir $APROLOG_INSTALL/lib
- mkdir $APROLOG_INSTALL/examples
- mkdir $APROLOG_INSTALL/examples/simple
- mkdir $APROLOG_INSTALL/doc
+if [ -d "$APROLOG_INSTALL/.." ]; then 
  if [ -d "$APROLOG_INSTALL" ]; then 
-   echo "Creating install directory $APROLOG_INSTALL"
-  else 
-   echo "Could not create install directory $APROLOG_INSTALL";
-   exit 1
+  echo "Directory $APROLOG_INSTALL already exists"
+ else 
+  mkdir $APROLOG_INSTALL
+  mkdir $APROLOG_INSTALL/bin
+  mkdir $APROLOG_INSTALL/lib
+  mkdir $APROLOG_INSTALL/examples
+  mkdir $APROLOG_INSTALL/examples/simple
+  mkdir $APROLOG_INSTALL/doc
+  if [ -d "$APROLOG_INSTALL" ]; then 
+    echo "Creating install directory $APROLOG_INSTALL"
+   else 
+    echo "Could not create install directory $APROLOG_INSTALL";
+    exit 1
+  fi
  fi
+else
+ echo "Parent of directory $APROLOG_INSTALL does not exist, please create it first."
+ exit 1
 fi
-
 
 echo "Copying $APROLOG_BASE/bin to $APROLOG_INSTALL/bin"
 cp -rf $APROLOG_BASE/bin/aprolog $APROLOG_INSTALL/bin
