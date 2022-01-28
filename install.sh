@@ -2,7 +2,7 @@
 APROLOG_BASE=$1
 APROLOG_INSTALL=$2
 
-if [ -d "$APROLOG_INSTALL/.." ]; then 
+if [ -d "$(dirname "$APROLOG_INSTALL")" ]; then 
  if [ -d "$APROLOG_INSTALL" ]; then 
   echo "Directory $APROLOG_INSTALL already exists"
  else 
