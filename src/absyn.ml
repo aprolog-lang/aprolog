@@ -520,7 +520,7 @@ let rec supp t =
   match t with
     Atomic(sym,ts) -> Varset.unions (List.map supp ts)
   | Name a -> Varset.singleton a
-  | Transpose(a,b,ts) -> Varset.from_list [a;b]
+  | Transpose(a,b,ts) -> Varset.from_list [a;b] +++ supp ts
   | Subst(t,u,v) -> supp t +++ supp u +++ supp v
   | New(a,_,t) -> Varset.remove a (supp t)
   | Abs(a,t) | Conc(t,a) -> supp t +++ (Varset.singleton a)
@@ -542,7 +542,7 @@ let rec fas t =
   match t with
     Atomic(sym,ts) -> Varset.unions (List.map fas ts)
   | Name a -> Varset.singleton a
-  | Transpose(a,b,ts) -> Varset.from_list [a;b]
+  | Transpose(a,b,ts) -> Varset.from_list [a;b] +++ fas ts
   | Subst(t,u,v) -> fas t +++ fas u +++ fas v
   | Abs(a,t) |New(a,_,t) -> Varset.remove a (fas t)
   | Conc(t,a) -> fas t +++ (Varset.singleton a)
@@ -563,7 +563,7 @@ let rec fvs t =
   match t with
     Atomic(sym,ts) -> Varset.unions (List.map fvs ts)
   | Name a -> Varset.empty
-  | Transpose(a,b,ts) -> Varset.empty
+  | Transpose(a,b,ts) -> fvs ts
   | Subst(t,u,v) -> fvs t +++ fvs u +++ fvs v
   | Abs(a,t) |New(a,_,t) -> fvs t
   | Conc(t,a) -> fvs t
