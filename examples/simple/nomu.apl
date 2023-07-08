@@ -103,3 +103,25 @@ unify([fresh(A,abs(B,T))|P],S):- A # B, unify ([fresh(A,T)|P],S).
 
 ? unify([eqn(abs(a,name(a)), abs(b,var([],x)))],S).
 
+? unify([eqn(var ([(a,b)],w),fun(f,var([(c,v)],w)))],S).
+
+? P is applyps((v,perm(inv [],u)),[eqn(var([],v),u)]).
+
+? unify([eqn(name a,var([],w)),eqn(var([],z),name b)],S).
+
+? unify([eqn(var([],z),name b)],S).
+
+? unify([eqn(name a,var([],w))],S).
+
+? unify([eqn(u,var([(a,b)],w))],S).
+
+? unify([eqn(fun(g,var([],v)), fun(g,name a))],S).
+
+? unify([eqn(fun(g,u),var([],w)),eqn(var([],z),fun(h,u))],S).
+
+? T is fun(g,u), Pi is [], V is w, P is [eqn(var([],z),fun(h,u))],
+  V # T, unify(applyps((V,perm (inv Pi,T)),P),S).
+
+? X is apply((w,perm (inv [],fun(g,u))),var([],z)).
+
+? X is apply((w,perm (inv [],fun(g,u))),fun(h,u)).
