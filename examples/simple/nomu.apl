@@ -45,7 +45,7 @@ func applyps (subst,[prob]) = [prob].
 apply (S,u)= u.
 apply ((V,T),var (P,V))= perm (P,T).
 apply ((W,T),var (P,V)) = var (P,V) :- V # W.
-apply (S,fun(f,T)) = fun(f,apply(S,T)).
+apply (S,fun(F,T)) = fun(F,apply(S,T)).
 apply(S,pair(T,U)) = pair(apply(S,T),apply(S,U)).
 applyp(S,eqn (T,U)) = eqn(apply(S,T),apply(S,U)).
 applyp(S,fresh(A,T)) = fresh(A,apply(S,T)).
@@ -63,16 +63,16 @@ unify([],[]).
 
 unify([eqn(name A, name A)|P],S)
   :- unify(P,S).
-unify([eqn(fun(f,T),fun(f,U))|P],S) 
+unify([eqn(fun(F,T),fun(F,U))|P],S)
   :- unify([eqn(T,U)|P],S).
 unify([eqn(pair(T,U),pair(T',U'))|P],S) 
   :- unify([eqn(T,T'),eqn(U,U')|P],S).
 unify([eqn(var (Pi1,V), var (Pi2,V))|P],S) 
   :- unify(P,S). % TODO: Difference set
 unify([eqn(var (Pi,V), T)| P], [(V,perm(inv Pi,T))|S])  
-  :- v # T, unify(applyps((v,perm (inv Pi,T)),P),S).
+  :- V # T, unify(applyps((V,perm (inv Pi,T)),P),S).
 unify([eqn(T, var (Pi,V))| P], [(V,perm(inv Pi,T))|S])  
-  :- V # T, unify(applyps((v,perm (inv Pi,T)),P),S).
+  :- V # T, unify(applyps((V,perm (inv Pi,T)),P),S).
 unify([eqn(abs(A,T),abs(A,U))|P],S) 
   :- unify([eqn(T,U)|P],S).
 unify([eqn(abs(A,T),abs(B,U))|P],S) 
