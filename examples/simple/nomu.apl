@@ -30,6 +30,7 @@ perm (P,pair(T,U)) = pair(perm(P,T),perm(P,U)).
 perm (P,fun(F,T)) = fun(F,perm(P,T)).
 perm (P,name N) = name(perm0(P,N)).
 perm (P,abs(N,T)) = abs(perm0(P,N), perm(P,T)).
+perm (P,u) = u.
 perm0 ([],A) = A.
 perm0 ([P|Ps],A) = perm00 (P,perm0(Ps,A)).
 perm00 ((A,B),A) = B.
@@ -76,6 +77,8 @@ unify([eqn(abs(A,T),abs(A,U))|P],S)
   :- unify([eqn(T,U)|P],S).
 unify([eqn(abs(A,T),abs(B,U))|P],S) 
   :- A # B, unify([eqn(T,perm([(A,B)],U)),fresh(A,U)|P],S).
+unify([eqn(u,u)|P],S)
+  :- unify(P,S).
 
 % #? cases
 
