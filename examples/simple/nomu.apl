@@ -88,7 +88,7 @@ unify([fresh(A,u)|P],S) :- unify (P,S).
 unify([fresh(A,pair(T,U))|P],S)
   :- unify([fresh(A,T),fresh(A,U)|P],S).
 unify([fresh(A,fun(F,T))|P],S)
-  :- unify([fresh(A,U)|P],S).
+  :- unify([fresh(A,T)|P],S).
 unify([fresh(A,abs(A,T))|P],S):- unify (P,S).
 unify([fresh(A,abs(B,T))|P],S):- A # B, unify ([fresh(A,T)|P],S).
 
